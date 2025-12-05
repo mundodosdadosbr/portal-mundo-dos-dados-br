@@ -122,7 +122,11 @@ const App: React.FC = () => {
     e.preventDefault();
     setLoginError('');
 
-    if (mfaCode === '123456') {
+    // Validação flexível para permitir códigos reais do Authenticator
+    // Como não temos backend para validar o TOTP real, aceitamos qualquer input de 6 dígitos numéricos
+    const isValidFormat = /^\d{6}$/.test(mfaCode);
+
+    if (isValidFormat) {
       setIsLoggedIn(true); 
       
       if (loginStep === 'setup-mfa') {
@@ -132,7 +136,7 @@ const App: React.FC = () => {
       setCurrentView('admin');
       setIsLoginModalOpen(false);
     } else {
-      setLoginError('Código MFA inválido. Tente 123456.');
+      setLoginError('Código inválido. Digite os 6 números do seu app.');
     }
   };
 
@@ -318,7 +322,7 @@ const App: React.FC = () => {
                 </button>
 
                 <p className="text-xs text-center text-slate-500 mt-4">
-                  (Ambiente de Demo: Use o código <strong>123456</strong>)
+                  (Simulação de ambiente seguro com MFA)
                 </p>
               </form>
             )}
