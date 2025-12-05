@@ -4,6 +4,7 @@ import {
   SocialPost,
   LandingPageContent
 } from '../types';
+import { getYouTubePosts } from '../services/youtubeService';
 import { 
   Trash2, 
   Plus, 
@@ -74,40 +75,76 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const handleSync = () => {
+  const handleSync = async () => {
     setIsSyncing(true);
-    // Simulate fetching ~20 items from various APIs
-    setTimeout(() => {
-      const platforms = [Platform.YOUTUBE, Platform.INSTAGRAM, Platform.TIKTOK, Platform.FACEBOOK];
+    
+    try {
+      // Tentativa de buscar dados reais do YouTube
+      const realYoutubePosts = await getYouTubePosts('desenvolvimento web react', 20);
+      
+      // Simulação para as outras redes (já que não temos backend para elas)
+      const otherPlatformsMock = generateMockPostsForOtherPlatforms();
+
+      setPosts(prev => {
+        // Combinar posts reais + mocks das outras redes + posts antigos (evitando duplicados por ID simples)
+        const newItems = [...realYoutubePosts, ...otherPlatformsMock];
+        const uniquePosts = [...newItems, ...prev].filter((post, index, self) => 
+          index === self.findIndex((t) => (
+            t.id === post.id
+          ))
+        );
+        return uniquePosts;
+      });
+
+      alert(`Sincronização concluída com sucesso! ${realYoutubePosts.length} vídeos reais do YouTube carregados.`);
+
+    } catch (error: any) {
+      console.error(error);
+      const errorMessage = error.message || 'Erro desconhecido';
+      
+      let friendlyError = `Erro ao conectar com API do YouTube: ${errorMessage}`;
+      
+      if (errorMessage.includes('API Key')) {
+        friendlyError += '\n\nDICA: Verifique se sua API Key é válida.';
+      } else if (errorMessage.includes('403')) {
+        friendlyError += '\n\nDICA: Verifique se a "YouTube Data API v3" está habilitada no Google Cloud Console para esta chave.';
+      }
+
+      alert(friendlyError + "\n\nCarregando dados simulados como fallback...");
+      
+      // Fallback para dados mockados se a API falhar
+      const mockPosts = generateMockPostsForOtherPlatforms(20);
+      setPosts(prev => [...mockPosts, ...prev]);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const generateMockPostsForOtherPlatforms = (count = 5) => {
+      const platforms = [Platform.INSTAGRAM, Platform.TIKTOK, Platform.FACEBOOK];
       const titles = [
-        "Vlog: Um dia na vida de Dev", "Tutorial React Avançado", "Como configurar o VS Code", "Setup Tour 2024",
-        "React vs Vue", "Dicas de Carreira", "Review Teclado Mecânico", "Live Coding", "Q&A com Seguidores",
-        "Aprendendo Docker", "Deploy na AWS", "Figma para Devs", "CSS Grid Tutorial", "Javascript Tips",
-        "Home Office Upgrade", "Cafezinho e Código", "Podcast DevTalks", "Review Monitor 4k", "Mouse Gamer Review", "Tech News"
+        "Bastidores do escritório", "Dicas rápidas de CSS", "Setup Tour 2024", 
+        "React vs Vue", "Vida de Programador", "Review Teclado", "Meme Dev", 
+        "Café e Código", "Notícias Tech", "Dica de Produtividade"
       ];
       
-      const newPosts: SocialPost[] = Array.from({ length: 20 }).map((_, i) => {
+      return Array.from({ length: count }).map((_, i) => {
         const platform = platforms[Math.floor(Math.random() * platforms.length)];
-        const isVideo = platform === Platform.YOUTUBE || platform === Platform.TIKTOK;
+        const isVideo = platform === Platform.TIKTOK;
         
         return {
-          id: `sync-${Date.now()}-${i}`,
+          id: `sync-mock-${Date.now()}-${i}`,
           platform,
-          thumbnailUrl: `https://picsum.photos/seed/${Math.random()}/${isVideo ? '600/400' : '400/500'}`,
-          title: isVideo ? titles[i] : undefined,
-          caption: !isVideo ? `${titles[i]} - Confira o post completo! 🚀 #tech #dev` : undefined,
-          likes: Math.floor(Math.random() * 50000),
-          comments: Math.floor(Math.random() * 1000),
-          views: Math.floor(Math.random() * 200000),
-          date: `há ${Math.floor(Math.random() * 23) + 1} horas`,
+          thumbnailUrl: `https://picsum.photos/seed/${Math.random()}/${isVideo ? '400/700' : '400/500'}`,
+          title: undefined,
+          caption: `${titles[Math.floor(Math.random() * titles.length)]} - Confira no ${platform}! 🚀`,
+          likes: Math.floor(Math.random() * 5000),
+          comments: Math.floor(Math.random() * 100),
+          views: isVideo ? Math.floor(Math.random() * 20000) : undefined,
+          date: 'há instantes',
           url: '#'
-        };
+        } as SocialPost;
       });
-      
-      setPosts(prev => [...newPosts, ...prev]);
-      setIsSyncing(false);
-      alert(`Sincronização concluída! 20 novos itens importados das redes conectadas.`);
-    }, 2500);
   };
 
   const handleConnectPlatform = (platform: Platform) => {
@@ -234,7 +271,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium border border-slate-700"
                 >
                   <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
-                  <span>{isSyncing ? 'Buscando últimos 20 vídeos...' : 'Sincronizar Tudo'}</span>
+                  <span>{isSyncing ? 'Conectando à API...' : 'Sincronizar Tudo'}</span>
                 </button>
                 <button 
                   onClick={() => setIsAddModalOpen(true)}
@@ -292,6 +329,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="flex flex-col space-y-1">
                             <span>❤️ {post.likes.toLocaleString('pt-BR')}</span>
                             <span>💬 {post.comments.toLocaleString('pt-BR')}</span>
+                            {post.views !== undefined && <span>👁️ {post.views.toLocaleString('pt-BR')}</span>}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right">
