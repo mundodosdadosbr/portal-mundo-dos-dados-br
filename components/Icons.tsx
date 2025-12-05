@@ -22,7 +22,11 @@ import {
   CheckCircle,
   BarChart3,
   ShieldCheck,
-  Smartphone
+  Smartphone,
+  RefreshCw,
+  Link2,
+  CloudLightning,
+  QrCode
 } from 'lucide-react';
 
 export { 
@@ -48,7 +52,11 @@ export {
   CheckCircle,
   BarChart3,
   ShieldCheck,
-  Smartphone
+  Smartphone,
+  RefreshCw,
+  Link2,
+  CloudLightning,
+  QrCode
 };
 
 // Custom TikTok icon component

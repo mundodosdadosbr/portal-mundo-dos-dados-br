@@ -5,9 +5,10 @@ import { Heart, MessageCircle, Eye, Sparkles } from './Icons';
 interface PostCardProps {
   post: SocialPost;
   onAiAction: (post: SocialPost) => void;
+  showAiAction: boolean;
 }
 
-export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction }) => {
+export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction, showAiAction }) => {
   const isVideo = post.platform === Platform.YOUTUBE || post.platform === Platform.TIKTOK;
 
   return (
@@ -70,16 +71,18 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction }) => {
           </div>
         </div>
 
-        {/* AI Action Button - Only show on hover for desktop, always for mobile if needed */}
-        <div className="mt-4 overflow-hidden h-0 group-hover:h-10 transition-all duration-300">
-          <button 
-            onClick={() => onAiAction(post)}
-            className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm font-medium py-2 rounded-lg transition-colors"
-          >
-            <Sparkles size={16} />
-            <span>Remixar com IA</span>
-          </button>
-        </div>
+        {/* AI Action Button - Only visible if logged in */}
+        {showAiAction && (
+          <div className="mt-4 overflow-hidden h-0 group-hover:h-10 transition-all duration-300">
+            <button 
+              onClick={() => onAiAction(post)}
+              className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm font-medium py-2 rounded-lg transition-colors"
+            >
+              <Sparkles size={16} />
+              <span>Remixar com IA</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

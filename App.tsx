@@ -100,6 +100,7 @@ const App: React.FC = () => {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   
   // Auth State
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [googleUser, setGoogleUser] = useState<typeof MOCK_GOOGLE_USER | null>(null);
   const [mfaCode, setMfaCode] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -111,11 +112,16 @@ const App: React.FC = () => {
 
   // Admin Access
   const handleAdminLoginClick = () => {
-    setIsLoginModalOpen(true);
-    setLoginStep('sso');
-    setLoginError('');
-    setGoogleUser(null);
-    setMfaCode('');
+    // If already logged in, go straight to admin
+    if (isLoggedIn) {
+      setCurrentView('admin');
+    } else {
+      setIsLoginModalOpen(true);
+      setLoginStep('sso');
+      setLoginError('');
+      setGoogleUser(null);
+      setMfaCode('');
+    }
   };
 
   const handleGoogleLogin = () => {
@@ -136,6 +142,7 @@ const App: React.FC = () => {
 
     // Validar Código MFA (Mock: 123456)
     if (mfaCode === '123456') {
+      setIsLoggedIn(true); // Set authenticated session
       setCurrentView('admin');
       setIsLoginModalOpen(false);
     } else {
@@ -144,6 +151,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    setIsLoggedIn(false);
     setGoogleUser(null);
     setCurrentView('landing');
   };
@@ -162,6 +170,7 @@ const App: React.FC = () => {
           posts={posts} 
           profile={MOCK_PROFILE}
           onHome={() => setCurrentView('landing')}
+          isAuthenticated={isLoggedIn}
         />
       )}
 
@@ -170,6 +179,7 @@ const App: React.FC = () => {
           posts={posts} 
           setPosts={setPosts}
           onLogout={handleLogout} 
+          onViewPortal={() => setCurrentView('portal')}
         />
       )}
 

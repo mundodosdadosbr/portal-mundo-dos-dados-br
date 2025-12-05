@@ -21,9 +21,10 @@ interface PortalDashboardProps {
   posts: SocialPost[];
   profile: CreatorProfile;
   onHome: () => void;
+  isAuthenticated: boolean;
 }
 
-export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile, onHome }) => {
+export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile, onHome, isAuthenticated }) => {
   const [activeTab, setActiveTab] = useState<Platform | 'All'>('All');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
@@ -36,6 +37,8 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
     : posts.filter(post => post.platform === activeTab);
 
   const handleAiAction = async (post: SocialPost) => {
+    if (!isAuthenticated) return;
+    
     setSelectedPost(post);
     setAiResponse('');
     setAiModalOpen(true);
@@ -177,7 +180,12 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
         {/* Masonry Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredPosts.map((post) => (
-            <PostCard key={post.id} post={post} onAiAction={handleAiAction} />
+            <PostCard 
+              key={post.id} 
+              post={post} 
+              onAiAction={handleAiAction} 
+              showAiAction={isAuthenticated}
+            />
           ))}
         </div>
         
