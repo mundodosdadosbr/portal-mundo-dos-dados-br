@@ -30,3 +30,15 @@ export interface AiSuggestion {
   text: string;
   type: 'caption' | 'idea' | 'tags';
 }
+
+export interface LandingPageContent {
+  headline: string;
+  subheadline: string;
+  ctaButtonText: string;
+  feature1Title: string;
+  feature1Desc: string;
+  feature2Title: string;
+  feature2Desc: string;
+  feature3Title: string;
+  feature3Desc: string;
+}

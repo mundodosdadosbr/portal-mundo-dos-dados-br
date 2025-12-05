@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SocialPost, Platform, CreatorProfile } from './types';
+import { SocialPost, Platform, CreatorProfile, LandingPageContent } from './types';
 import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -18,6 +18,18 @@ const MOCK_GOOGLE_USER = {
   name: "Administrador Nexus",
   email: "admin@creatornexus.com",
   avatar: "https://ui-avatars.com/api/?name=Admin+Nexus&background=6366f1&color=fff"
+};
+
+const INITIAL_LANDING_CONTENT: LandingPageContent = {
+  headline: "Um Hub para Todas as Plataformas",
+  subheadline: "Experimente nosso feed social unificado. Acompanhe os vídeos mais recentes do YouTube, TikTok, Instagram e Facebook em um painel elegante.",
+  ctaButtonText: "Acessar Portal",
+  feature1Title: "Feed Unificado",
+  feature1Desc: "Veja todas as suas postagens recentes do YouTube, TikTok, Instagram e Facebook em uma grade em tempo real.",
+  feature2Title: "Assistente de IA",
+  feature2Desc: "Gere legendas, remix conteúdo e receba sugestões de tags instantaneamente usando nossa integração com Gemini AI.",
+  feature3Title: "Análise de Crescimento",
+  feature3Desc: "Acompanhe seu desempenho entre plataformas com métricas agregadas de visualizações, curtidas e engajamento."
 };
 
 const INITIAL_POSTS: SocialPost[] = [
@@ -92,6 +104,7 @@ type LoginStep = 'sso' | 'mfa' | 'setup-sso' | 'setup-mfa';
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('landing');
   const [posts, setPosts] = useState<SocialPost[]>(INITIAL_POSTS);
+  const [landingContent, setLandingContent] = useState<LandingPageContent>(INITIAL_LANDING_CONTENT);
   
   // System State (Simula se o sistema já tem um dono)
   const [hasConfiguredAdmin, setHasConfiguredAdmin] = useState(false);
@@ -179,7 +192,8 @@ const App: React.FC = () => {
       {currentView === 'landing' && (
         <LandingPage 
           onPortalAccess={handlePortalAccess}
-          onAdminLogin={handleAdminLoginClick} 
+          onAdminLogin={handleAdminLoginClick}
+          content={landingContent}
         />
       )}
       
@@ -198,6 +212,8 @@ const App: React.FC = () => {
           setPosts={setPosts}
           onLogout={handleLogout} 
           onViewPortal={() => setCurrentView('portal')}
+          landingContent={landingContent}
+          setLandingContent={setLandingContent}
         />
       )}
 

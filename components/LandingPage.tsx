@@ -1,12 +1,14 @@
 import React from 'react';
 import { Sparkles, TrendingUp, Users, LayoutDashboard } from './Icons';
+import { LandingPageContent } from '../types';
 
 interface LandingPageProps {
   onPortalAccess: () => void;
   onAdminLogin: () => void;
+  content: LandingPageContent;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdminLogin }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdminLogin, content }) => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Navbar */}
@@ -50,14 +52,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdmi
           </div>
           
           <h1 className="text-5xl md:text-7xl font-bold mb-8 leading-tight">
-            Um Hub para <br />
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
-              Todas as Plataformas
-            </span>
+            {content.headline}
           </h1>
           
           <p className="text-xl text-slate-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-            Experimente nosso feed social unificado. Acompanhe os vídeos mais recentes do YouTube, TikTok, Instagram e Facebook em um painel elegante.
+            {content.subheadline}
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
@@ -65,7 +64,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdmi
               onClick={onPortalAccess}
               className="w-full sm:w-auto px-8 py-4 bg-white text-slate-950 rounded-xl font-bold text-lg hover:bg-slate-200 transition-colors"
             >
-              Acessar Portal
+              {content.ctaButtonText}
             </button>
             <button className="w-full sm:w-auto px-8 py-4 bg-slate-900 text-white border border-slate-800 rounded-xl font-bold text-lg hover:bg-slate-800 transition-colors">
               Saiba Mais
@@ -78,31 +77,34 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdmi
       <section className="bg-slate-900/50 py-24 border-y border-slate-900">
         <div className="container mx-auto px-6">
           <div className="grid md:grid-cols-3 gap-12">
+            {/* Feature 1 */}
             <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 hover:border-indigo-500/50 transition-colors">
               <div className="w-12 h-12 bg-indigo-500/10 rounded-lg flex items-center justify-center mb-4 text-indigo-400">
                 <LayoutDashboard size={24} />
               </div>
-              <h3 className="text-xl font-bold mb-3">Feed Unificado</h3>
+              <h3 className="text-xl font-bold mb-3">{content.feature1Title}</h3>
               <p className="text-slate-400">
-                Veja todas as suas postagens recentes do YouTube, TikTok, Instagram e Facebook em uma grade em tempo real.
+                {content.feature1Desc}
               </p>
             </div>
+            {/* Feature 2 */}
             <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 hover:border-purple-500/50 transition-colors">
               <div className="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center mb-4 text-purple-400">
                 <Sparkles size={24} />
               </div>
-              <h3 className="text-xl font-bold mb-3">Assistente de IA</h3>
+              <h3 className="text-xl font-bold mb-3">{content.feature2Title}</h3>
               <p className="text-slate-400">
-                Gere legendas, remix conteúdo e receba sugestões de tags instantaneamente usando nossa integração com Gemini AI.
+                {content.feature2Desc}
               </p>
             </div>
+            {/* Feature 3 */}
             <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 transition-colors">
               <div className="w-12 h-12 bg-emerald-500/10 rounded-lg flex items-center justify-center mb-4 text-emerald-400">
                 <TrendingUp size={24} />
               </div>
-              <h3 className="text-xl font-bold mb-3">Análise de Crescimento</h3>
+              <h3 className="text-xl font-bold mb-3">{content.feature3Title}</h3>
               <p className="text-slate-400">
-                Acompanhe seu desempenho entre plataformas com métricas agregadas de visualizações, curtidas e engajamento.
+                {content.feature3Desc}
               </p>
             </div>
           </div>
