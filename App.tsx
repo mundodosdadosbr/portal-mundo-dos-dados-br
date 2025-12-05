@@ -3,7 +3,7 @@ import { SocialPost, Platform, CreatorProfile } from './types';
 import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
-import { X, Lock, ShieldCheck, Smartphone, GoogleIcon, QrCode, CheckCircle } from './components/Icons';
+import { X, Lock, Smartphone, GoogleIcon, CheckCircle } from './components/Icons';
 
 // --- DADOS FICTÍCIOS (MOCK DATA) ---
 const MOCK_PROFILE: CreatorProfile = {
@@ -306,12 +306,20 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* QR Code for Setup */}
+                {/* QR Code for Setup (REAL QR) */}
                 {loginStep === 'setup-mfa' && (
-                  <div className="bg-white p-4 rounded-lg flex flex-col items-center justify-center mb-4">
-                     <QrCode className="text-slate-900 w-32 h-32" strokeWidth={1.5} />
+                  <div className="bg-white p-4 rounded-lg flex flex-col items-center justify-center mb-4 border-4 border-white">
+                     {/* QR Code real para simular o padrão Authenticator */}
+                     <img 
+                       src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=otpauth://totp/CreatorNexus:Admin?secret=JBSWY3DPEHPK3PXP&issuer=CreatorNexus" 
+                       alt="QR Code MFA"
+                       className="w-36 h-36"
+                     />
                      <p className="text-slate-900 text-xs mt-2 font-medium text-center">
-                       Escaneie com seu app autenticador
+                       Escaneie com Google Authenticator
+                     </p>
+                     <p className="text-slate-400 text-[10px] mt-1 font-mono bg-slate-100 px-2 py-0.5 rounded">
+                       Chave: JBSW Y3DP EHPK 3PXP
                      </p>
                   </div>
                 )}
@@ -319,7 +327,7 @@ const App: React.FC = () => {
                 <div className="text-center mb-2">
                   <p className="text-slate-300 text-sm">
                     {loginStep === 'setup-mfa' 
-                      ? 'Digite o código gerado pelo app para confirmar o vínculo.' 
+                      ? 'Digite o código gerado pelo app para confirmar.' 
                       : 'Digite o código do seu autenticador.'}
                   </p>
                 </div>
