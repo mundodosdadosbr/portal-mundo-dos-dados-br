@@ -5,35 +5,37 @@ import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
 import { X, Lock, Smartphone, GoogleIcon, CheckCircle } from './components/Icons';
 
-// --- DADOS INICIAIS GENÉRICOS ---
+// --- DADOS DO MUNDO DOS DADOS BR ---
 const INITIAL_PROFILE: CreatorProfile = {
-  name: "Seu Nome (Configure no Admin)",
-  handle: "@seu_arroba",
-  avatarUrl: "https://ui-avatars.com/api/?name=User&background=random",
-  faviconUrl: "https://aistudiocdn.com/lucide-react@^0.556.0/icons/layout-dashboard.svg",
+  name: "Mundo dos Dados BR",
+  handle: "@mundodosdadosbr",
+  avatarUrl: "https://ui-avatars.com/api/?name=Mundo+Dados&background=0f172a&color=38bdf8&size=256",
+  faviconUrl: "https://cdn-icons-png.flaticon.com/512/2906/2906274.png", // Ícone de Database genérico
   subscribers: "0",
-  bio: "Sua biografia aparecerá aqui. Vá até o painel administrativo para configurar seu perfil.",
+  bio: "Aqui, mergulhamos no fascinante universo dos dados, abrindo portas para entusiastas, iniciantes e profissionais. Do essencial da Análise de Negócios e Tecnologia da Informação até as fronteiras da Ciência de Dados em Saúde, Marketing, Setor Público, Tecnologia, Indústria e Educação.",
 };
 
 const MOCK_GOOGLE_USER = {
-  name: "Administrador Nexus",
-  email: "admin@creatornexus.com",
-  avatar: "https://ui-avatars.com/api/?name=Admin+Nexus&background=6366f1&color=fff"
+  name: "Admin Mundo dos Dados",
+  email: "admin@mundodosdados.com.br",
+  avatar: "https://ui-avatars.com/api/?name=Admin+MD&background=6366f1&color=fff"
 };
 
 const INITIAL_LANDING_CONTENT: LandingPageContent = {
-  headline: "Um Hub para Todas as Plataformas",
-  subheadline: "Experimente nosso feed social unificado. Acompanhe os vídeos mais recentes do YouTube, TikTok, Instagram e Facebook em um painel elegante.",
-  ctaButtonText: "Acessar Portal",
-  feature1Title: "Feed Unificado",
-  feature1Desc: "Veja todas as suas postagens recentes do YouTube, TikTok, Instagram e Facebook em uma grade em tempo real.",
-  feature2Title: "Assistente de IA",
-  feature2Desc: "Gere legendas, remix conteúdo e receba sugestões de tags instantaneamente usando nossa integração com Gemini AI.",
-  feature3Title: "Análise de Crescimento",
-  feature3Desc: "Acompanhe seu desempenho entre plataformas com métricas agregadas de visualizações, curtidas e engajamento."
+  headline: "Mundo dos Dados BR",
+  subheadline: "Nosso canal é o guia perfeito para quem busca compreender e aplicar o poder dos dados no dia a dia e no trabalho. Revelamos como os insights derivados dos dados estão remodelando o mundo, otimizando processos e impulsionando inovações.",
+  ctaButtonText: "Explorar Dados",
+  logoUrl: "", // O usuário pode colar a URL da logo aqui via Admin
+  feature1Title: "Análise de Negócios",
+  feature1Desc: "Conteúdo essencial sobre Business Intelligence e como dados orientam decisões estratégicas.",
+  feature2Title: "Ciência de Dados",
+  feature2Desc: "Explorações profundas em Data Science aplicadas a Saúde, Marketing, Indústria e Tecnologia.",
+  feature3Title: "Educação em Dados",
+  feature3Desc: "O guia perfeito para entusiastas e iniciantes dominarem a arte da análise de dados.",
 };
 
-const INITIAL_POSTS: SocialPost[] = []; // Começa vazio para incentivar a sincronização
+// Simulando banco de dados pré-existente para produção
+const INITIAL_POSTS: SocialPost[] = []; 
 
 type ViewState = 'landing' | 'portal' | 'admin';
 type LoginStep = 'sso' | 'mfa' | 'setup-sso' | 'setup-mfa';
@@ -41,16 +43,26 @@ type LoginStep = 'sso' | 'mfa' | 'setup-sso' | 'setup-mfa';
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('landing');
   const [posts, setPosts] = useState<SocialPost[]>(INITIAL_POSTS);
-  const [landingContent, setLandingContent] = useState<LandingPageContent>(INITIAL_LANDING_CONTENT);
   
-  // Perfil Dinâmico
-  const [profile, setProfile] = useState<CreatorProfile>(INITIAL_PROFILE);
+  // Estados Persistentes (simulando DB)
+  const [landingContent, setLandingContent] = useState<LandingPageContent>(() => {
+    const saved = localStorage.getItem('nexus_landing_content');
+    return saved ? JSON.parse(saved) : INITIAL_LANDING_CONTENT;
+  });
   
-  // Configuração de API
-  const [youtubeApiKey, setYoutubeApiKey] = useState('');
+  const [profile, setProfile] = useState<CreatorProfile>(() => {
+    const saved = localStorage.getItem('nexus_profile');
+    return saved ? JSON.parse(saved) : INITIAL_PROFILE;
+  });
+  
+  const [youtubeApiKey, setYoutubeApiKey] = useState(() => {
+    return localStorage.getItem('nexus_yt_api_key') || '';
+  });
 
-  // System State
-  const [hasConfiguredAdmin, setHasConfiguredAdmin] = useState(false);
+  const [hasConfiguredAdmin, setHasConfiguredAdmin] = useState(() => {
+    // Para produção/demo, assumimos que já está configurado para não pedir setup toda hora
+    return true; 
+  });
 
   // Login Modal State
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -62,6 +74,19 @@ const App: React.FC = () => {
   const [googleUser, setGoogleUser] = useState<typeof MOCK_GOOGLE_USER | null>(null);
   const [mfaCode, setMfaCode] = useState('');
   const [loginError, setLoginError] = useState('');
+
+  // Persistência
+  useEffect(() => {
+    localStorage.setItem('nexus_landing_content', JSON.stringify(landingContent));
+  }, [landingContent]);
+
+  useEffect(() => {
+    localStorage.setItem('nexus_profile', JSON.stringify(profile));
+  }, [profile]);
+
+  useEffect(() => {
+    localStorage.setItem('nexus_yt_api_key', youtubeApiKey);
+  }, [youtubeApiKey]);
 
   // Efeito para Atualizar o Favicon Dinamicamente
   useEffect(() => {
@@ -75,8 +100,9 @@ const App: React.FC = () => {
         link.href = profile.faviconUrl;
         document.head.appendChild(link);
       }
+      document.title = profile.name; // Atualiza também o título da aba
     }
-  }, [profile.faviconUrl]);
+  }, [profile.faviconUrl, profile.name]);
 
   // Public Access
   const handlePortalAccess = () => {
@@ -122,8 +148,6 @@ const App: React.FC = () => {
     e.preventDefault();
     setLoginError('');
 
-    // Validação flexível para permitir códigos reais do Authenticator
-    // Como não temos backend para validar o TOTP real, aceitamos qualquer input de 6 dígitos numéricos
     const isValidFormat = /^\d{6}$/.test(mfaCode);
 
     if (isValidFormat) {
@@ -131,6 +155,7 @@ const App: React.FC = () => {
       
       if (loginStep === 'setup-mfa') {
         setHasConfiguredAdmin(true);
+        localStorage.setItem('nexus_has_admin', 'true');
       }
 
       setCurrentView('admin');
@@ -216,9 +241,9 @@ const App: React.FC = () => {
             {loginStep === 'setup-sso' && (
               <div className="space-y-6 relative z-10 animate-fade-in">
                 <div className="bg-indigo-900/20 border border-indigo-500/30 p-4 rounded-lg">
-                  <p className="text-indigo-200 text-sm font-medium mb-1">Bem-vindo ao CreatorNexus!</p>
+                  <p className="text-indigo-200 text-sm font-medium mb-1">Bem-vindo ao Mundo dos Dados BR!</p>
                   <p className="text-slate-400 text-xs">
-                    Nenhum administrador foi detectado. Conecte sua conta Google para se tornar o superusuário do sistema.
+                    Configure o administrador para gerenciar o portal.
                   </p>
                 </div>
 
@@ -278,15 +303,12 @@ const App: React.FC = () => {
                 {loginStep === 'setup-mfa' && (
                   <div className="bg-white p-4 rounded-lg flex flex-col items-center justify-center mb-4 border-4 border-white">
                      <img 
-                       src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=otpauth://totp/CreatorNexus:Admin?secret=JBSWY3DPEHPK3PXP&issuer=CreatorNexus" 
+                       src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=otpauth://totp/MundoDosDadosBR:Admin?secret=JBSWY3DPEHPK3PXP&issuer=MundoDosDadosBR" 
                        alt="QR Code MFA"
                        className="w-36 h-36"
                      />
                      <p className="text-slate-900 text-xs mt-2 font-medium text-center">
                        Escaneie com Google Authenticator
-                     </p>
-                     <p className="text-slate-400 text-[10px] mt-1 font-mono bg-slate-100 px-2 py-0.5 rounded">
-                       Chave: JBSW Y3DP EHPK 3PXP
                      </p>
                   </div>
                 )}
@@ -321,8 +343,9 @@ const App: React.FC = () => {
                   {loginStep === 'setup-mfa' ? 'Confirmar Configuração' : 'Verificar Código'}
                 </button>
 
-                <p className="text-xs text-center text-slate-500 mt-4">
-                  (Simulação de ambiente seguro com MFA)
+                {/* Dica para Demo */}
+                <p className="text-[10px] text-center text-slate-600 mt-4">
+                  (Demo: Digite qualquer número de 6 dígitos)
                 </p>
               </form>
             )}

@@ -36,6 +36,7 @@ export interface LandingPageContent {
   headline: string;
   subheadline: string;
   ctaButtonText: string;
+  logoUrl?: string;
   feature1Title: string;
   feature1Desc: string;
   feature2Title: string;

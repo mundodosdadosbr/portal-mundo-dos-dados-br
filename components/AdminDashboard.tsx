@@ -91,7 +91,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     
     try {
       // Passa a chave personalizada (se existir) para o serviço
-      const realYoutubePosts = await getYouTubePosts('tecnologia e programação', 20, youtubeApiKey);
+      const realYoutubePosts = await getYouTubePosts('Mundo dos Dados BR', 20, youtubeApiKey);
       
       const otherPlatformsMock = generateMockPostsForOtherPlatforms();
 
@@ -130,9 +130,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const generateMockPostsForOtherPlatforms = (count = 5) => {
       const platforms = [Platform.INSTAGRAM, Platform.TIKTOK, Platform.FACEBOOK];
       const titles = [
-        "Bastidores do escritório", "Dicas rápidas de CSS", "Setup Tour 2024", 
-        "React vs Vue", "Vida de Programador", "Review Teclado", "Meme Dev", 
-        "Café e Código", "Notícias Tech", "Dica de Produtividade"
+        "Bastidores do escritório", "Dicas rápidas de SQL", "Python vs R", 
+        "Dashboard Power BI", "Vida de Data Scientist", "Review Livro Dados", "Meme SQL", 
+        "Café e ETL", "Notícias Big Data", "Dica de Pandas"
       ];
       
       return Array.from({ length: count }).map((_, i) => {
@@ -306,7 +306,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                          <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
                            <CloudLightning className="mx-auto mb-2 opacity-50" size={32} />
                            <p>Nenhuma postagem ainda.</p>
-                           <p className="text-sm">Clique em "Sincronizar Tudo" para buscar do YouTube.</p>
+                           <p className="text-sm">Clique em "Sincronizar Tudo" para buscar vídeos do Mundo dos Dados BR.</p>
                          </td>
                        </tr>
                     ) : (
@@ -425,7 +425,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div>
                       <label className="block text-sm font-medium text-slate-400 mb-2">Biografia</label>
                       <textarea 
-                        rows={4}
+                        rows={6}
                         value={profile.bio}
                         onChange={(e) => setProfile({...profile, bio: e.target.value})}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
@@ -454,6 +454,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         onChange={(e) => setLandingContent({...landingContent, headline: e.target.value})}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                       />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-400 mb-2">Logo do Site (URL)</label>
+                      <div className="flex space-x-3">
+                         <input 
+                            type="text" 
+                            value={landingContent.logoUrl || ''}
+                            onChange={(e) => setLandingContent({...landingContent, logoUrl: e.target.value})}
+                            className="flex-grow bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                            placeholder="https://... (Deixe em branco para usar ícone padrão)"
+                         />
+                          <div className="w-12 h-12 flex-shrink-0 bg-slate-800 border border-slate-700 rounded-lg flex items-center justify-center overflow-hidden">
+                                {landingContent.logoUrl ? <img src={landingContent.logoUrl} alt="Logo" className="w-8 h-8 object-contain" /> : <LayoutDashboard className="text-slate-600" />}
+                           </div>
+                      </div>
                     </div>
 
                     <div>
