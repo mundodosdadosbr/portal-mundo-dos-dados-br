@@ -3,7 +3,7 @@ import { SocialPost, Platform, CreatorProfile } from './types';
 import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
-import { X, Lock, ShieldCheck, Smartphone, GoogleIcon } from './components/Icons';
+import { X, Lock, ShieldCheck, Smartphone, GoogleIcon, QrCode, CheckCircle } from './components/Icons';
 
 // --- DADOS FICTÍCIOS (MOCK DATA) ---
 const MOCK_PROFILE: CreatorProfile = {
@@ -14,7 +14,6 @@ const MOCK_PROFILE: CreatorProfile = {
   bio: "Reviewer de tecnologia, programador e entusiasta de café. Trazendo o melhor em ferramentas dev e lifestyle.",
 };
 
-// Dados simulados do usuário Google
 const MOCK_GOOGLE_USER = {
   name: "Administrador Nexus",
   email: "admin@creatornexus.com",
@@ -88,12 +87,15 @@ const INITIAL_POSTS: SocialPost[] = [
 ];
 
 type ViewState = 'landing' | 'portal' | 'admin';
-type LoginStep = 'sso' | 'mfa';
+type LoginStep = 'sso' | 'mfa' | 'setup-sso' | 'setup-mfa';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('landing');
   const [posts, setPosts] = useState<SocialPost[]>(INITIAL_POSTS);
   
+  // System State (Simula se o sistema já tem um dono)
+  const [hasConfiguredAdmin, setHasConfiguredAdmin] = useState(false);
+
   // Login Modal State
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginStep, setLoginStep] = useState<LoginStep>('sso');
@@ -110,21 +112,27 @@ const App: React.FC = () => {
     setCurrentView('portal');
   };
 
-  // Admin Access
+  // Admin Access Handler
   const handleAdminLoginClick = () => {
-    // If already logged in, go straight to admin
     if (isLoggedIn) {
       setCurrentView('admin');
+      return;
+    }
+
+    setIsLoginModalOpen(true);
+    setLoginError('');
+    setGoogleUser(null);
+    setMfaCode('');
+
+    // Se não tem admin configurado, inicia fluxo de cadastro (setup)
+    if (!hasConfiguredAdmin) {
+      setLoginStep('setup-sso');
     } else {
-      setIsLoginModalOpen(true);
       setLoginStep('sso');
-      setLoginError('');
-      setGoogleUser(null);
-      setMfaCode('');
     }
   };
 
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = (mode: 'login' | 'setup') => {
     setIsAuthenticating(true);
     setLoginError('');
 
@@ -132,7 +140,12 @@ const App: React.FC = () => {
     setTimeout(() => {
       setIsAuthenticating(false);
       setGoogleUser(MOCK_GOOGLE_USER);
-      setLoginStep('mfa');
+      
+      if (mode === 'setup') {
+        setLoginStep('setup-mfa');
+      } else {
+        setLoginStep('mfa');
+      }
     }, 1500);
   };
 
@@ -142,11 +155,16 @@ const App: React.FC = () => {
 
     // Validar Código MFA (Mock: 123456)
     if (mfaCode === '123456') {
-      setIsLoggedIn(true); // Set authenticated session
+      setIsLoggedIn(true); 
+      
+      if (loginStep === 'setup-mfa') {
+        setHasConfiguredAdmin(true); // Admin cadastrado com sucesso
+      }
+
       setCurrentView('admin');
       setIsLoginModalOpen(false);
     } else {
-      setLoginError('Código MFA inválido.');
+      setLoginError('Código MFA inválido. Tente 123456.');
     }
   };
 
@@ -183,7 +201,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Admin Login Modal */}
+      {/* Admin Login / Setup Modal */}
       {isLoginModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm">
           <div className="bg-slate-900 w-full max-w-sm rounded-2xl border border-slate-700 shadow-2xl p-6 relative overflow-hidden">
@@ -191,14 +209,17 @@ const App: React.FC = () => {
             {/* Header */}
             <div className="flex justify-between items-center mb-6 relative z-10">
               <h3 className="text-xl font-bold flex items-center gap-2">
-                {loginStep === 'sso' ? (
-                  <Lock size={20} className="text-indigo-400" />
+                {loginStep.includes('setup') ? (
+                  <>
+                    <CheckCircle size={20} className="text-emerald-400" />
+                    <span>Configuração Inicial</span>
+                  </>
                 ) : (
-                  <ShieldCheck size={20} className="text-emerald-400" />
+                  <>
+                    <Lock size={20} className="text-indigo-400" />
+                    <span>Login Administrativo</span>
+                  </>
                 )}
-                <span>
-                  {loginStep === 'sso' ? 'Acesso Administrativo' : 'Verificação MFA'}
-                </span>
               </h3>
               <button 
                 onClick={() => setIsLoginModalOpen(false)}
@@ -215,15 +236,42 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {/* STEP 1: Google SSO */}
-            {loginStep === 'sso' && (
-              <div className="space-y-6 relative z-10">
-                <div className="text-center text-slate-400 text-sm">
-                  Utilize sua conta corporativa Google para acessar o painel de administração.
+            {/* --- SETUP FLOW: STEP 1 (SSO) --- */}
+            {loginStep === 'setup-sso' && (
+              <div className="space-y-6 relative z-10 animate-fade-in">
+                <div className="bg-indigo-900/20 border border-indigo-500/30 p-4 rounded-lg">
+                  <p className="text-indigo-200 text-sm font-medium mb-1">Bem-vindo ao CreatorNexus!</p>
+                  <p className="text-slate-400 text-xs">
+                    Nenhum administrador foi detectado. Conecte sua conta Google para se tornar o superusuário do sistema.
+                  </p>
                 </div>
 
                 <button 
-                  onClick={handleGoogleLogin}
+                  onClick={() => handleGoogleLogin('setup')}
+                  disabled={isAuthenticating}
+                  className="w-full bg-white hover:bg-slate-100 text-slate-900 font-medium py-3 px-4 rounded-lg transition-all shadow-lg flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {isAuthenticating ? (
+                    <div className="w-5 h-5 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
+                  ) : (
+                    <GoogleIcon className="w-5 h-5" />
+                  )}
+                  <span>
+                    {isAuthenticating ? 'Vinculando...' : 'Cadastrar com Google'}
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {/* --- LOGIN FLOW: STEP 1 (SSO) --- */}
+            {loginStep === 'sso' && (
+              <div className="space-y-6 relative z-10 animate-fade-in">
+                <div className="text-center text-slate-400 text-sm">
+                  Utilize sua conta vinculada para acessar o painel.
+                </div>
+
+                <button 
+                  onClick={() => handleGoogleLogin('login')}
                   disabled={isAuthenticating}
                   className="w-full bg-white hover:bg-slate-100 text-slate-900 font-medium py-3 px-4 rounded-lg transition-all shadow-lg flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
@@ -237,48 +285,51 @@ const App: React.FC = () => {
                   </span>
                 </button>
                 
-                <div className="relative py-2">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-800"></div>
-                  </div>
-                  <div className="relative flex justify-center text-xs">
-                    <span className="bg-slate-900 px-2 text-slate-600">Área restrita</span>
-                  </div>
-                </div>
-
                 <p className="text-xs text-center text-slate-600">
-                  Ao continuar, você concorda com nossas políticas de segurança e acesso de dados.
+                  Acesso restrito a usuários autorizados.
                 </p>
               </div>
             )}
 
-            {/* STEP 2: MFA */}
-            {loginStep === 'mfa' && googleUser && (
+            {/* --- MFA STEP (SHARED) --- */}
+            {(loginStep === 'mfa' || loginStep === 'setup-mfa') && googleUser && (
               <form onSubmit={handleMfaSubmit} className="space-y-4 relative z-10 animate-fade-in">
-                {/* User Info Card */}
-                <div className="bg-slate-800/50 rounded-lg p-3 flex items-center space-x-3 mb-6 border border-slate-700">
+                
+                {/* User Info */}
+                <div className="bg-slate-800/50 rounded-lg p-3 flex items-center space-x-3 mb-4 border border-slate-700">
                   <img src={googleUser.avatar} alt="Avatar" className="w-10 h-10 rounded-full" />
                   <div className="overflow-hidden">
                     <p className="text-sm font-medium text-white truncate">{googleUser.name}</p>
                     <p className="text-xs text-emerald-400 flex items-center gap-1">
-                      <ShieldCheck size={10} /> Conta verificada
+                      {loginStep === 'setup-mfa' ? 'Vinculando conta...' : 'Conta verificada'}
                     </p>
                   </div>
                 </div>
 
-                <div className="text-center mb-4">
+                {/* QR Code for Setup */}
+                {loginStep === 'setup-mfa' && (
+                  <div className="bg-white p-4 rounded-lg flex flex-col items-center justify-center mb-4">
+                     <QrCode className="text-slate-900 w-32 h-32" strokeWidth={1.5} />
+                     <p className="text-slate-900 text-xs mt-2 font-medium text-center">
+                       Escaneie com seu app autenticador
+                     </p>
+                  </div>
+                )}
+
+                <div className="text-center mb-2">
                   <p className="text-slate-300 text-sm">
-                    Digite o código de 6 dígitos enviado para seu aplicativo autenticador.
+                    {loginStep === 'setup-mfa' 
+                      ? 'Digite o código gerado pelo app para confirmar o vínculo.' 
+                      : 'Digite o código do seu autenticador.'}
                   </p>
                 </div>
 
                 <div>
                   <input 
                     type="text" 
-                    className="w-full bg-slate-950 border border-emerald-500/50 rounded-lg p-4 text-center text-2xl tracking-[0.5em] font-mono text-white focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-all placeholder:tracking-normal placeholder:text-sm placeholder:font-sans"
+                    className="w-full bg-slate-950 border border-emerald-500/50 rounded-lg p-3 text-center text-2xl tracking-[0.5em] font-mono text-white focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-all placeholder:tracking-normal placeholder:text-sm placeholder:font-sans"
                     value={mfaCode}
                     onChange={(e) => {
-                      // Allow only numbers and max 6 chars
                       const val = e.target.value.replace(/\D/g, '').slice(0, 6);
                       setMfaCode(val);
                     }}
@@ -289,22 +340,14 @@ const App: React.FC = () => {
                 
                 <button 
                   type="submit"
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-all mt-4 shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-all mt-2 shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
                 >
                   <Smartphone size={18} />
-                  Verificar Código
+                  {loginStep === 'setup-mfa' ? 'Confirmar Configuração' : 'Verificar Código'}
                 </button>
 
-                <button 
-                  type="button"
-                  onClick={() => setLoginStep('sso')}
-                  className="w-full text-slate-500 text-xs hover:text-white mt-2"
-                >
-                  Cancelar / Trocar conta
-                </button>
-                
-                <p className="text-xs text-center text-slate-600 mt-4">
-                  (Demo: Use o código 123456)
+                <p className="text-xs text-center text-slate-500 mt-4">
+                  (Ambiente de Demo: Use o código <strong>123456</strong>)
                 </p>
               </form>
             )}
