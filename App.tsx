@@ -1,17 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SocialPost, Platform, CreatorProfile, LandingPageContent } from './types';
 import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
 import { X, Lock, Smartphone, GoogleIcon, CheckCircle } from './components/Icons';
 
-// --- DADOS FICTÍCIOS (MOCK DATA) ---
-const MOCK_PROFILE: CreatorProfile = {
-  name: "Alex O Criador",
-  handle: "@alexcriador",
-  avatarUrl: "https://picsum.photos/200/200",
-  subscribers: "1.2M",
-  bio: "Reviewer de tecnologia, programador e entusiasta de café. Trazendo o melhor em ferramentas dev e lifestyle.",
+// --- DADOS INICIAIS GENÉRICOS ---
+const INITIAL_PROFILE: CreatorProfile = {
+  name: "Seu Nome (Configure no Admin)",
+  handle: "@seu_arroba",
+  avatarUrl: "https://ui-avatars.com/api/?name=User&background=random",
+  faviconUrl: "https://aistudiocdn.com/lucide-react@^0.556.0/icons/layout-dashboard.svg",
+  subscribers: "0",
+  bio: "Sua biografia aparecerá aqui. Vá até o painel administrativo para configurar seu perfil.",
 };
 
 const MOCK_GOOGLE_USER = {
@@ -32,71 +33,7 @@ const INITIAL_LANDING_CONTENT: LandingPageContent = {
   feature3Desc: "Acompanhe seu desempenho entre plataformas com métricas agregadas de visualizações, curtidas e engajamento."
 };
 
-const INITIAL_POSTS: SocialPost[] = [
-  {
-    id: 'yt-1',
-    platform: Platform.YOUTUBE,
-    thumbnailUrl: 'https://picsum.photos/seed/yt1/600/400',
-    title: 'Criando um App React em 10 Minutos com IA',
-    likes: 12500,
-    comments: 430,
-    views: 85000,
-    date: 'há 2 horas',
-    url: '#',
-  },
-  {
-    id: 'ig-1',
-    platform: Platform.INSTAGRAM,
-    thumbnailUrl: 'https://picsum.photos/seed/ig1/400/500',
-    caption: 'Bastidores do novo setup! 🎬 #setup #tech #homeoffice',
-    likes: 4200,
-    comments: 85,
-    date: 'há 5 horas',
-    url: '#',
-  },
-  {
-    id: 'tt-1',
-    platform: Platform.TIKTOK,
-    thumbnailUrl: 'https://picsum.photos/seed/tt1/400/700',
-    caption: 'Top 3 extensões do VS Code que você precisa! 💻',
-    likes: 89000,
-    comments: 1200,
-    views: 450000,
-    date: 'há 1 dia',
-    url: '#',
-  },
-  {
-    id: 'yt-2',
-    platform: Platform.YOUTUBE,
-    thumbnailUrl: 'https://picsum.photos/seed/yt2/600/400',
-    title: 'Por que mudei para o Linux para programar',
-    likes: 24000,
-    comments: 1500,
-    views: 210000,
-    date: 'há 3 dias',
-    url: '#',
-  },
-  {
-    id: 'fb-1',
-    platform: Platform.FACEBOOK,
-    thumbnailUrl: 'https://picsum.photos/seed/fb1/600/400',
-    caption: 'Novo desafio da comunidade começando na próxima semana! Entre no Discord.',
-    likes: 560,
-    comments: 45,
-    date: 'há 4 dias',
-    url: '#',
-  },
-  {
-    id: 'ig-2',
-    platform: Platform.INSTAGRAM,
-    thumbnailUrl: 'https://picsum.photos/seed/ig2/400/500',
-    caption: 'Pausa para o café ☕️ No que você está trabalhando hoje?',
-    likes: 3100,
-    comments: 120,
-    date: 'há 1 semana',
-    url: '#',
-  },
-];
+const INITIAL_POSTS: SocialPost[] = []; // Começa vazio para incentivar a sincronização
 
 type ViewState = 'landing' | 'portal' | 'admin';
 type LoginStep = 'sso' | 'mfa' | 'setup-sso' | 'setup-mfa';
@@ -106,7 +43,13 @@ const App: React.FC = () => {
   const [posts, setPosts] = useState<SocialPost[]>(INITIAL_POSTS);
   const [landingContent, setLandingContent] = useState<LandingPageContent>(INITIAL_LANDING_CONTENT);
   
-  // System State (Simula se o sistema já tem um dono)
+  // Perfil Dinâmico
+  const [profile, setProfile] = useState<CreatorProfile>(INITIAL_PROFILE);
+  
+  // Configuração de API
+  const [youtubeApiKey, setYoutubeApiKey] = useState('');
+
+  // System State
   const [hasConfiguredAdmin, setHasConfiguredAdmin] = useState(false);
 
   // Login Modal State
@@ -119,6 +62,21 @@ const App: React.FC = () => {
   const [googleUser, setGoogleUser] = useState<typeof MOCK_GOOGLE_USER | null>(null);
   const [mfaCode, setMfaCode] = useState('');
   const [loginError, setLoginError] = useState('');
+
+  // Efeito para Atualizar o Favicon Dinamicamente
+  useEffect(() => {
+    if (profile.faviconUrl) {
+      const existingLink = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (existingLink) {
+        existingLink.href = profile.faviconUrl;
+      } else {
+        const link = document.createElement('link');
+        link.rel = 'icon';
+        link.href = profile.faviconUrl;
+        document.head.appendChild(link);
+      }
+    }
+  }, [profile.faviconUrl]);
 
   // Public Access
   const handlePortalAccess = () => {
@@ -137,7 +95,6 @@ const App: React.FC = () => {
     setGoogleUser(null);
     setMfaCode('');
 
-    // Se não tem admin configurado, inicia fluxo de cadastro (setup)
     if (!hasConfiguredAdmin) {
       setLoginStep('setup-sso');
     } else {
@@ -149,7 +106,6 @@ const App: React.FC = () => {
     setIsAuthenticating(true);
     setLoginError('');
 
-    // Simular delay de rede do Google Auth
     setTimeout(() => {
       setIsAuthenticating(false);
       setGoogleUser(MOCK_GOOGLE_USER);
@@ -166,12 +122,11 @@ const App: React.FC = () => {
     e.preventDefault();
     setLoginError('');
 
-    // Validar Código MFA (Mock: 123456)
     if (mfaCode === '123456') {
       setIsLoggedIn(true); 
       
       if (loginStep === 'setup-mfa') {
-        setHasConfiguredAdmin(true); // Admin cadastrado com sucesso
+        setHasConfiguredAdmin(true);
       }
 
       setCurrentView('admin');
@@ -200,7 +155,7 @@ const App: React.FC = () => {
       {currentView === 'portal' && (
         <PortalDashboard 
           posts={posts} 
-          profile={MOCK_PROFILE}
+          profile={profile}
           onHome={() => setCurrentView('landing')}
           isAuthenticated={isLoggedIn}
         />
@@ -214,6 +169,10 @@ const App: React.FC = () => {
           onViewPortal={() => setCurrentView('portal')}
           landingContent={landingContent}
           setLandingContent={setLandingContent}
+          profile={profile}
+          setProfile={setProfile}
+          youtubeApiKey={youtubeApiKey}
+          setYoutubeApiKey={setYoutubeApiKey}
         />
       )}
 
@@ -222,7 +181,6 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm">
           <div className="bg-slate-900 w-full max-w-sm rounded-2xl border border-slate-700 shadow-2xl p-6 relative overflow-hidden">
             
-            {/* Header */}
             <div className="flex justify-between items-center mb-6 relative z-10">
               <h3 className="text-xl font-bold flex items-center gap-2">
                 {loginStep.includes('setup') ? (
@@ -245,14 +203,12 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            {/* Error Message */}
             {loginError && (
               <div className="mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm p-3 rounded-lg animate-pulse">
                 {loginError}
               </div>
             )}
 
-            {/* --- SETUP FLOW: STEP 1 (SSO) --- */}
             {loginStep === 'setup-sso' && (
               <div className="space-y-6 relative z-10 animate-fade-in">
                 <div className="bg-indigo-900/20 border border-indigo-500/30 p-4 rounded-lg">
@@ -279,7 +235,6 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {/* --- LOGIN FLOW: STEP 1 (SSO) --- */}
             {loginStep === 'sso' && (
               <div className="space-y-6 relative z-10 animate-fade-in">
                 <div className="text-center text-slate-400 text-sm">
@@ -300,18 +255,12 @@ const App: React.FC = () => {
                     {isAuthenticating ? 'Autenticando...' : 'Entrar com Google'}
                   </span>
                 </button>
-                
-                <p className="text-xs text-center text-slate-600">
-                  Acesso restrito a usuários autorizados.
-                </p>
               </div>
             )}
 
-            {/* --- MFA STEP (SHARED) --- */}
             {(loginStep === 'mfa' || loginStep === 'setup-mfa') && googleUser && (
               <form onSubmit={handleMfaSubmit} className="space-y-4 relative z-10 animate-fade-in">
                 
-                {/* User Info */}
                 <div className="bg-slate-800/50 rounded-lg p-3 flex items-center space-x-3 mb-4 border border-slate-700">
                   <img src={googleUser.avatar} alt="Avatar" className="w-10 h-10 rounded-full" />
                   <div className="overflow-hidden">
@@ -322,10 +271,8 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* QR Code for Setup (REAL QR) */}
                 {loginStep === 'setup-mfa' && (
                   <div className="bg-white p-4 rounded-lg flex flex-col items-center justify-center mb-4 border-4 border-white">
-                     {/* QR Code real para simular o padrão Authenticator */}
                      <img 
                        src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=otpauth://totp/CreatorNexus:Admin?secret=JBSWY3DPEHPK3PXP&issuer=CreatorNexus" 
                        alt="QR Code MFA"

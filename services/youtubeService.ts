@@ -1,18 +1,23 @@
 import { SocialPost, Platform } from '../types';
 
-const getApiKey = () => process.env.API_KEY || '';
+const getEnvApiKey = () => process.env.API_KEY || '';
 const YOUTUBE_API_URL = 'https://www.googleapis.com/youtube/v3';
 
-export const getYouTubePosts = async (query: string = 'tecnologia e programação', maxResults: number = 20): Promise<SocialPost[]> => {
-  const apiKey = getApiKey();
+export const getYouTubePosts = async (
+  query: string = 'tecnologia e programação', 
+  maxResults: number = 20,
+  customApiKey?: string
+): Promise<SocialPost[]> => {
+  
+  // Prioriza a chave personalizada do usuário, senão usa a do ambiente
+  const apiKey = customApiKey || getEnvApiKey();
   
   if (!apiKey) {
-    throw new Error('API Key não encontrada');
+    throw new Error('Nenhuma Chave de API fornecida. Configure na aba Integrações.');
   }
 
   try {
     // 1. Buscar IDs de vídeos (Busca)
-    // Documentação: https://developers.google.com/youtube/v3/docs/search/list
     const searchUrl = `${YOUTUBE_API_URL}/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=${maxResults}&key=${apiKey}`;
     
     const searchRes = await fetch(searchUrl);
@@ -31,7 +36,6 @@ export const getYouTubePosts = async (query: string = 'tecnologia e programaçã
     const videoIds = searchData.items.map((item: any) => item.id.videoId).join(',');
 
     // 2. Buscar detalhes dos vídeos (Estatísticas: views, likes, comments)
-    // Documentação: https://developers.google.com/youtube/v3/docs/videos/list
     const videosUrl = `${YOUTUBE_API_URL}/videos?part=snippet,statistics&id=${videoIds}&key=${apiKey}`;
     const videosRes = await fetch(videosUrl);
     
@@ -47,7 +51,7 @@ export const getYouTubePosts = async (query: string = 'tecnologia e programaçã
       platform: Platform.YOUTUBE,
       thumbnailUrl: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url,
       title: item.snippet.title,
-      caption: item.snippet.description, // YouTube usa description como caption
+      caption: item.snippet.description,
       likes: parseInt(item.statistics.likeCount || '0'),
       comments: parseInt(item.statistics.commentCount || '0'),
       views: parseInt(item.statistics.viewCount || '0'),

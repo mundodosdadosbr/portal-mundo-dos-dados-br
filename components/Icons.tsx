@@ -26,7 +26,8 @@ import {
   RefreshCw,
   Link2,
   CloudLightning,
-  QrCode
+  QrCode,
+  AlertTriangle
 } from 'lucide-react';
 
 export { 
@@ -56,7 +57,8 @@ export {
   RefreshCw,
   Link2,
   CloudLightning,
-  QrCode
+  QrCode,
+  AlertTriangle
 };
 
 // Custom TikTok icon component

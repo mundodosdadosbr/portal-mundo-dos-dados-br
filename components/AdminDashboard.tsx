@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { 
   Platform, 
   SocialPost,
-  LandingPageContent
+  LandingPageContent,
+  CreatorProfile
 } from '../types';
 import { getYouTubePosts } from '../services/youtubeService';
 import { 
@@ -21,7 +22,9 @@ import {
   Link2,
   RefreshCw,
   CloudLightning,
-  Video
+  Video,
+  Users,
+  AlertTriangle
 } from './Icons';
 
 interface AdminDashboardProps {
@@ -31,9 +34,13 @@ interface AdminDashboardProps {
   onViewPortal: () => void;
   landingContent: LandingPageContent;
   setLandingContent: React.Dispatch<React.SetStateAction<LandingPageContent>>;
+  profile: CreatorProfile;
+  setProfile: React.Dispatch<React.SetStateAction<CreatorProfile>>;
+  youtubeApiKey: string;
+  setYoutubeApiKey: React.Dispatch<React.SetStateAction<string>>;
 }
 
-type AdminView = 'content' | 'integrations' | 'pages' | 'analytics';
+type AdminView = 'content' | 'integrations' | 'pages' | 'profile' | 'analytics';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   posts, 
@@ -41,7 +48,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onLogout, 
   onViewPortal,
   landingContent,
-  setLandingContent
+  setLandingContent,
+  profile,
+  setProfile,
+  youtubeApiKey,
+  setYoutubeApiKey
 }) => {
   const [activeView, setActiveView] = useState<AdminView>('content');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -79,14 +90,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsSyncing(true);
     
     try {
-      // Tentativa de buscar dados reais do YouTube
-      const realYoutubePosts = await getYouTubePosts('desenvolvimento web react', 20);
+      // Passa a chave personalizada (se existir) para o serviço
+      const realYoutubePosts = await getYouTubePosts('tecnologia e programação', 20, youtubeApiKey);
       
-      // Simulação para as outras redes (já que não temos backend para elas)
       const otherPlatformsMock = generateMockPostsForOtherPlatforms();
 
       setPosts(prev => {
-        // Combinar posts reais + mocks das outras redes + posts antigos (evitando duplicados por ID simples)
         const newItems = [...realYoutubePosts, ...otherPlatformsMock];
         const uniquePosts = [...newItems, ...prev].filter((post, index, self) => 
           index === self.findIndex((t) => (
@@ -104,15 +113,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       
       let friendlyError = `Erro ao conectar com API do YouTube: ${errorMessage}`;
       
-      if (errorMessage.includes('API Key')) {
-        friendlyError += '\n\nDICA: Verifique se sua API Key é válida.';
-      } else if (errorMessage.includes('403')) {
-        friendlyError += '\n\nDICA: Verifique se a "YouTube Data API v3" está habilitada no Google Cloud Console para esta chave.';
+      if (errorMessage.includes('API Key') || errorMessage.includes('key')) {
+        friendlyError += '\n\nDICA: Vá na aba "Integrações" e configure uma Chave de API do YouTube válida com permissão "YouTube Data API v3".';
       }
 
-      alert(friendlyError + "\n\nCarregando dados simulados como fallback...");
+      alert(friendlyError + "\n\nCarregando dados simulados como fallback para você não ficar sem conteúdo...");
       
-      // Fallback para dados mockados se a API falhar
+      // Fallback
       const mockPosts = generateMockPostsForOtherPlatforms(20);
       setPosts(prev => [...mockPosts, ...prev]);
     } finally {
@@ -157,7 +164,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!oauthPlatform) return;
     setOauthLoading(true);
     
-    // Simulate OAuth redirect and token exchange
     setTimeout(() => {
       setConnectedPlatforms(prev => ({ ...prev, [oauthPlatform]: true }));
       setOauthLoading(false);
@@ -228,11 +234,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button 
-            disabled
-            className="w-full text-slate-400 hover:text-white px-4 py-2 flex items-center space-x-3 cursor-not-allowed opacity-50"
+            onClick={() => setActiveView('profile')}
+            className={`w-full px-4 py-2 flex items-center space-x-3 rounded-lg transition-colors ${activeView === 'profile' ? 'bg-indigo-600/20 text-indigo-300' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
           >
-             <BarChart3 size={18} />
-             <span>Análises (Em breve)</span>
+             <Users size={18} />
+             <span>Seu Perfil</span>
           </button>
 
            <div className="pt-4 mt-4 border-t border-slate-800">
@@ -295,56 +301,137 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {posts.map((post) => (
-                      <tr key={post.id} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center space-x-4">
-                            <img 
-                              src={post.thumbnailUrl} 
-                              alt="" 
-                              className="w-16 h-12 object-cover rounded bg-slate-800"
-                            />
-                            <div className="max-w-xs">
-                               <div className="font-medium truncate text-white">{post.title || post.caption || 'Sem título'}</div>
-                               <div className="text-xs text-slate-500">{post.date}</div>
+                    {posts.length === 0 ? (
+                       <tr>
+                         <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
+                           <CloudLightning className="mx-auto mb-2 opacity-50" size={32} />
+                           <p>Nenhuma postagem ainda.</p>
+                           <p className="text-sm">Clique em "Sincronizar Tudo" para buscar do YouTube.</p>
+                         </td>
+                       </tr>
+                    ) : (
+                      posts.map((post) => (
+                        <tr key={post.id} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center space-x-4">
+                              <img 
+                                src={post.thumbnailUrl} 
+                                alt="" 
+                                className="w-16 h-12 object-cover rounded bg-slate-800"
+                              />
+                              <div className="max-w-xs">
+                                <div className="font-medium truncate text-white">{post.title || post.caption || 'Sem título'}</div>
+                                <div className="text-xs text-slate-500">{post.date}</div>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`
-                            inline-flex items-center space-x-1 px-2 py-1 rounded-md text-xs font-medium border
-                            ${post.platform === Platform.YOUTUBE ? 'bg-red-500/10 text-red-400 border-red-500/20' : ''}
-                            ${post.platform === Platform.INSTAGRAM ? 'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20' : ''}
-                            ${post.platform === Platform.TIKTOK ? 'bg-teal-500/10 text-teal-400 border-teal-500/20' : ''}
-                            ${post.platform === Platform.FACEBOOK ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : ''}
-                          `}>
-                            {post.platform === Platform.YOUTUBE && <Youtube size={12} />}
-                            {post.platform === Platform.INSTAGRAM && <Instagram size={12} />}
-                            {post.platform === Platform.TIKTOK && <TikTokIcon className="w-3 h-3" />}
-                            {post.platform === Platform.FACEBOOK && <Facebook size={12} />}
-                            <span>{post.platform === Platform.TIKTOK ? 'TikTok' : post.platform}</span>
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-400">
-                          <div className="flex flex-col space-y-1">
-                            <span>❤️ {post.likes.toLocaleString('pt-BR')}</span>
-                            <span>💬 {post.comments.toLocaleString('pt-BR')}</span>
-                            {post.views !== undefined && <span>👁️ {post.views.toLocaleString('pt-BR')}</span>}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                           <button 
-                             onClick={() => handleDelete(post.id)}
-                             className="text-slate-500 hover:text-red-400 transition-colors p-2 hover:bg-red-500/10 rounded-lg"
-                             title="Excluir Post"
-                           >
-                             <Trash2 size={18} />
-                           </button>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="inline-flex items-center space-x-1 px-2 py-1 rounded-md text-xs font-medium border border-slate-700 bg-slate-800">
+                              <span>{post.platform}</span>
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-400">
+                            <div className="flex flex-col space-y-1">
+                              <span>❤️ {post.likes.toLocaleString('pt-BR')}</span>
+                              <span>💬 {post.comments.toLocaleString('pt-BR')}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button 
+                              onClick={() => handleDelete(post.id)}
+                              className="text-slate-500 hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* PROFILE VIEW */}
+        {activeView === 'profile' && (
+          <>
+            <header className="h-16 bg-slate-900/50 backdrop-blur border-b border-slate-800 flex items-center justify-between px-6">
+              <h1 className="text-xl font-semibold">Editar Perfil do Portal</h1>
+            </header>
+            <div className="flex-grow overflow-y-auto p-8">
+              <div className="max-w-2xl mx-auto bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
+                 <div className="flex items-center space-x-4 mb-8">
+                   <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-indigo-500 relative bg-slate-800">
+                      <img src={profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                   </div>
+                   <div>
+                     <h2 className="text-xl font-bold text-white">{profile.name}</h2>
+                     <p className="text-indigo-400">{profile.handle}</p>
+                   </div>
+                 </div>
+
+                 <div className="space-y-6">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-400 mb-2">Nome de Exibição</label>
+                      <input 
+                        type="text" 
+                        value={profile.name}
+                        onChange={(e) => setProfile({...profile, name: e.target.value})}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-400 mb-2">Handle (@usuario)</label>
+                      <input 
+                        type="text" 
+                        value={profile.handle}
+                        onChange={(e) => setProfile({...profile, handle: e.target.value})}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-2">URL do Avatar (Foto)</label>
+                        <input 
+                          type="text" 
+                          value={profile.avatarUrl}
+                          onChange={(e) => setProfile({...profile, avatarUrl: e.target.value})}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                          placeholder="https://..."
+                        />
+                      </div>
+                      
+                      <div>
+                         <label className="block text-sm font-medium text-slate-400 mb-2">Ícone da Aba (Favicon)</label>
+                         <div className="flex space-x-3">
+                           <input 
+                              type="text" 
+                              value={profile.faviconUrl || ''}
+                              onChange={(e) => setProfile({...profile, faviconUrl: e.target.value})}
+                              className="flex-grow bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                              placeholder="https://..."
+                            />
+                            <div className="w-12 h-12 flex-shrink-0 bg-slate-800 border border-slate-700 rounded-lg flex items-center justify-center overflow-hidden">
+                                {profile.faviconUrl ? <img src={profile.faviconUrl} alt="Favicon" className="w-6 h-6 object-contain" /> : <span className="text-xs text-slate-600">?</span>}
+                            </div>
+                         </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-400 mb-2">Biografia</label>
+                      <textarea 
+                        rows={4}
+                        value={profile.bio}
+                        onChange={(e) => setProfile({...profile, bio: e.target.value})}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                 </div>
               </div>
             </div>
           </>
@@ -358,11 +445,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </header>
             <div className="flex-grow overflow-y-auto p-8">
               <div className="max-w-3xl mx-auto bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
-                 <div className="flex items-center space-x-2 mb-6 text-indigo-400">
-                   <LayoutDashboard size={24} />
-                   <h2 className="text-lg font-bold text-white">Configurações da Landing Page</h2>
-                 </div>
-
                  <div className="space-y-6">
                     <div>
                       <label className="block text-sm font-medium text-slate-400 mb-2">Título Principal (Headline)</label>
@@ -469,14 +551,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <h3 className="text-indigo-100 font-bold text-lg mb-1">Sincronização Automática</h3>
                     <p className="text-indigo-200/70 text-sm">
                       Ao conectar suas contas abaixo, o CreatorNexus importará automaticamente seus novos vídeos e postagens.
-                      A autenticação é feita diretamente com o provedor (Google/Meta/TikTok) via OAuth2.
                     </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* YouTube */}
-                  <div className={`p-6 rounded-xl border transition-all ${connectedPlatforms[Platform.YOUTUBE] ? 'bg-slate-900 border-emerald-500/30' : 'bg-slate-900/50 border-slate-800'}`}>
+                  <div className={`p-6 rounded-xl border transition-all bg-slate-900 border-emerald-500/30`}>
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white">
@@ -484,100 +565,60 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                         <div>
                           <h4 className="font-bold">YouTube</h4>
-                          <p className="text-xs text-slate-500">Vídeos Longos e Shorts</p>
+                          <p className="text-xs text-slate-500">Integração API v3</p>
                         </div>
                       </div>
-                      {connectedPlatforms[Platform.YOUTUBE] && (
-                        <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                          <CheckCircle size={12} /> Conectado
-                        </span>
-                      )}
+                      <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                        <CheckCircle size={12} /> Ativo
+                      </span>
                     </div>
-                    <button 
-                      onClick={() => connectedPlatforms[Platform.YOUTUBE] ? handleDisconnect(Platform.YOUTUBE) : handleConnectPlatform(Platform.YOUTUBE)}
-                      className={`w-full py-2 rounded-lg text-sm font-medium transition-colors border ${connectedPlatforms[Platform.YOUTUBE] ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-white text-slate-900 hover:bg-slate-200 border-white'}`}
-                    >
-                      {connectedPlatforms[Platform.YOUTUBE] ? 'Desconectar' : 'Conectar Conta'}
-                    </button>
+                    
+                    <div className="mt-4 space-y-2">
+                       <label className="text-xs text-slate-400">Chave de API do YouTube (Opcional)</label>
+                       <input 
+                         type="password" 
+                         value={youtubeApiKey}
+                         onChange={(e) => setYoutubeApiKey(e.target.value)}
+                         placeholder="Cole sua API Key aqui se a padrão falhar"
+                         className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-red-500 focus:outline-none"
+                       />
+                       <p className="text-[10px] text-slate-500">
+                         Se o botão "Sincronizar" falhar, crie uma chave no Google Cloud Console com "YouTube Data API v3" habilitada e cole aqui.
+                       </p>
+                    </div>
                   </div>
 
-                  {/* Instagram */}
-                  <div className={`p-6 rounded-xl border transition-all ${connectedPlatforms[Platform.INSTAGRAM] ? 'bg-slate-900 border-emerald-500/30' : 'bg-slate-900/50 border-slate-800'}`}>
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500 rounded-full flex items-center justify-center text-white">
-                          <Instagram size={20} />
+                  {/* Other Platforms (Simulated) */}
+                  {[
+                    { id: Platform.INSTAGRAM, icon: Instagram, color: 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500', name: 'Instagram' },
+                    { id: Platform.TIKTOK, icon: TikTokIcon, color: 'bg-teal-400 text-black', name: 'TikTok' },
+                    { id: Platform.FACEBOOK, icon: Facebook, color: 'bg-blue-600', name: 'Facebook' }
+                  ].map((p) => (
+                    <div key={p.id} className={`p-6 rounded-xl border transition-all ${connectedPlatforms[p.id] ? 'bg-slate-900 border-emerald-500/30' : 'bg-slate-900/50 border-slate-800'}`}>
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-10 h-10 ${p.color} rounded-full flex items-center justify-center text-white`}>
+                            <p.icon size={20} />
+                          </div>
+                          <div>
+                            <h4 className="font-bold">{p.name}</h4>
+                            <p className="text-xs text-slate-500">OAuth 2.0</p>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="font-bold">Instagram</h4>
-                          <p className="text-xs text-slate-500">Reels e Posts do Feed</p>
-                        </div>
+                        {connectedPlatforms[p.id] && (
+                           <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                            <CheckCircle size={12} /> Conectado
+                          </span>
+                        )}
                       </div>
-                      {connectedPlatforms[Platform.INSTAGRAM] && (
-                         <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                          <CheckCircle size={12} /> Conectado
-                        </span>
-                      )}
+                      <button 
+                        onClick={() => connectedPlatforms[p.id] ? handleDisconnect(p.id as Platform) : handleConnectPlatform(p.id as Platform)}
+                        className={`w-full py-2 rounded-lg text-sm font-medium transition-colors border ${connectedPlatforms[p.id] ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-white text-slate-900 hover:bg-slate-200 border-white'}`}
+                      >
+                        {connectedPlatforms[p.id] ? 'Desconectar' : 'Conectar Conta'}
+                      </button>
                     </div>
-                    <button 
-                      onClick={() => connectedPlatforms[Platform.INSTAGRAM] ? handleDisconnect(Platform.INSTAGRAM) : handleConnectPlatform(Platform.INSTAGRAM)}
-                      className={`w-full py-2 rounded-lg text-sm font-medium transition-colors border ${connectedPlatforms[Platform.INSTAGRAM] ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-white text-slate-900 hover:bg-slate-200 border-white'}`}
-                    >
-                      {connectedPlatforms[Platform.INSTAGRAM] ? 'Desconectar' : 'Conectar Conta'}
-                    </button>
-                  </div>
-
-                  {/* TikTok */}
-                  <div className={`p-6 rounded-xl border transition-all ${connectedPlatforms[Platform.TIKTOK] ? 'bg-slate-900 border-emerald-500/30' : 'bg-slate-900/50 border-slate-800'}`}>
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-teal-400 rounded-full flex items-center justify-center text-slate-900">
-                          <TikTokIcon className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold">TikTok</h4>
-                          <p className="text-xs text-slate-500">Vídeos virais</p>
-                        </div>
-                      </div>
-                      {connectedPlatforms[Platform.TIKTOK] && (
-                        <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                          <CheckCircle size={12} /> Conectado
-                        </span>
-                      )}
-                    </div>
-                    <button 
-                      onClick={() => connectedPlatforms[Platform.TIKTOK] ? handleDisconnect(Platform.TIKTOK) : handleConnectPlatform(Platform.TIKTOK)}
-                      className={`w-full py-2 rounded-lg text-sm font-medium transition-colors border ${connectedPlatforms[Platform.TIKTOK] ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-white text-slate-900 hover:bg-slate-200 border-white'}`}
-                    >
-                       {connectedPlatforms[Platform.TIKTOK] ? 'Desconectar' : 'Conectar Conta'}
-                    </button>
-                  </div>
-
-                  {/* Facebook */}
-                  <div className={`p-6 rounded-xl border transition-all ${connectedPlatforms[Platform.FACEBOOK] ? 'bg-slate-900 border-emerald-500/30' : 'bg-slate-900/50 border-slate-800'}`}>
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white">
-                          <Facebook size={20} />
-                        </div>
-                        <div>
-                          <h4 className="font-bold">Facebook</h4>
-                          <p className="text-xs text-slate-500">Páginas Públicas</p>
-                        </div>
-                      </div>
-                       {connectedPlatforms[Platform.FACEBOOK] && (
-                        <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                          <CheckCircle size={12} /> Conectado
-                        </span>
-                      )}
-                    </div>
-                    <button 
-                      onClick={() => connectedPlatforms[Platform.FACEBOOK] ? handleDisconnect(Platform.FACEBOOK) : handleConnectPlatform(Platform.FACEBOOK)}
-                      className={`w-full py-2 rounded-lg text-sm font-medium transition-colors border ${connectedPlatforms[Platform.FACEBOOK] ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-white text-slate-900 hover:bg-slate-200 border-white'}`}
-                    >
-                      {connectedPlatforms[Platform.FACEBOOK] ? 'Desconectar' : 'Conectar Conta'}
-                    </button>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -598,7 +639,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             
             <form onSubmit={handleAddPost} className="p-6 space-y-4">
-              {/* Form Content kept same as before */}
               <div>
                 <label className="block text-sm font-medium text-slate-400 mb-1">Plataforma</label>
                 <div className="grid grid-cols-4 gap-2">
@@ -679,7 +719,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
            <div className="bg-white text-slate-900 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden transform scale-100 transition-all">
               <div className="p-6 flex flex-col items-center text-center">
-                 {/* Platform Logo */}
                  <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
                     {oauthPlatform === Platform.YOUTUBE && <Youtube size={32} className="text-red-600" />}
                     {oauthPlatform === Platform.INSTAGRAM && <Instagram size={32} className="text-fuchsia-600" />}
@@ -691,12 +730,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  <p className="text-slate-500 text-sm mb-6">
                    O CreatorNexus está solicitando permissão para acessar sua conta.
                  </p>
-
-                 <div className="w-full bg-slate-50 p-3 rounded-lg border border-slate-200 text-left text-xs text-slate-600 mb-6 space-y-2">
-                    <p className="flex items-center gap-2"><CheckCircle size={14} className="text-green-500"/> Ver seus vídeos e playlists</p>
-                    <p className="flex items-center gap-2"><CheckCircle size={14} className="text-green-500"/> Ler comentários e métricas</p>
-                    <p className="flex items-center gap-2"><CheckCircle size={14} className="text-green-500"/> Gerenciar legendas</p>
-                 </div>
 
                  {oauthLoading ? (
                    <div className="w-full py-3 bg-slate-100 text-slate-500 rounded-lg flex items-center justify-center gap-2">
@@ -719,9 +752,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </button>
                    </div>
                  )}
-              </div>
-              <div className="bg-slate-50 p-3 text-center border-t border-slate-200">
-                <p className="text-[10px] text-slate-400">Esta é uma simulação segura de OAuth2.</p>
               </div>
            </div>
         </div>

@@ -22,6 +22,7 @@ export interface CreatorProfile {
   name: string;
   handle: string;
   avatarUrl: string;
+  faviconUrl?: string;
   subscribers: string;
   bio: string;
 }
