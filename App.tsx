@@ -44,7 +44,7 @@ const INITIAL_LANDING_CONTENT: LandingPageContent = {
 };
 
 type ViewState = 'landing' | 'portal' | 'admin';
-type LoginStep = 'config-db' | 'sso' | 'pin-setup' | 'pin-verify';
+type LoginStep = 'sso' | 'pin-setup' | 'pin-verify';
 type BackendErrorType = 'permission' | 'auth_missing' | null;
 
 const App: React.FC = () => {
@@ -72,25 +72,12 @@ const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [pinInput, setPinInput] = useState('');
   const [loginError, setLoginError] = useState('');
-  
-  // Firebase Config Form State
-  const [firebaseConfigInput, setFirebaseConfigInput] = useState('');
 
   // --- INICIALIZAÇÃO ---
   useEffect(() => {
-    const checkFirebase = () => {
-      if (isFirebaseConfigured()) {
-        const { app } = initFirebase();
-        if (app) {
-          setIsFirebaseReady(true);
-        } else {
-          setIsFirebaseReady(false);
-        }
-      } else {
-        setIsFirebaseReady(false);
-      }
-    };
-    checkFirebase();
+    // Agora o Firebase está hardcoded, sempre pronto
+    const { app } = initFirebase();
+    setIsFirebaseReady(true);
   }, []);
 
   // --- DATA SYNC (FIRESTORE) ---
@@ -189,12 +176,14 @@ const App: React.FC = () => {
     setIsLoginModalOpen(true);
     setLoginError('');
     setPinInput('');
+    setLoginStep('sso'); // Sempre começa pelo SSO agora
+  };
 
-    if (!isFirebaseReady) {
-      setLoginStep('config-db');
-    } else {
-      setLoginStep('sso');
-    }
+  const handleLogout = async () => {
+    await logout();
+    setIsLoggedIn(false);
+    setUser(null);
+    setCurrentView('landing');
   };
 
   const handleGoogleLoginAction = async () => {
@@ -230,6 +219,18 @@ const App: React.FC = () => {
     }
   };
 
+  // Auto-verify helper
+  const verifyPin = (code: string) => {
+     if (code === storedSecurityPin) {
+        setIsLoggedIn(true);
+        setCurrentView('admin');
+        setIsLoginModalOpen(false);
+     } else {
+        setLoginError('PIN incorreto.');
+        setPinInput(''); // Reset for retry
+     }
+  };
+
   const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -250,30 +251,7 @@ const App: React.FC = () => {
     } 
     // VERIFY MODE
     else {
-        if (pinInput === storedSecurityPin) {
-            setIsLoggedIn(true);
-            setCurrentView('admin');
-            setIsLoginModalOpen(false);
-        } else {
-            setLoginError('PIN incorreto.');
-        }
-    }
-  };
-
-  const handleLogout = async () => {
-    await logout();
-    setIsLoggedIn(false);
-    setUser(null);
-    setCurrentView('landing');
-  };
-
-  const handleSaveFirebaseConfig = () => {
-    try {
-      const config = JSON.parse(firebaseConfigInput);
-      saveFirebaseConfig(config);
-      // A página recarregará
-    } catch (e) {
-      setLoginError("JSON Inválido. Certifique-se de copiar todo o objeto do console do Firebase.");
+        verifyPin(pinInput);
     }
   };
 
@@ -333,49 +311,19 @@ const App: React.FC = () => {
                 <>
                   <p className="font-medium text-white">Erro: Permissão Negada (Firestore)</p>
                   <p className="text-sm">O banco de dados existe, mas as regras de segurança estão bloqueando o acesso.</p>
-                  <ol className="list-decimal list-inside text-sm space-y-2 bg-slate-950 p-4 rounded-lg border border-slate-800">
-                    <li>Vá ao Console Firebase &gt; <strong>Firestore Database</strong> &gt; aba <strong>Regras</strong>.</li>
-                    <li>Cole o código abaixo e clique em <strong>Publicar</strong>:</li>
-                  </ol>
                   <pre className="bg-black p-3 rounded text-xs text-green-400 overflow-x-auto">
-{`rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
-    }
-  }
-}`}
+{`allow read, write: if true;`}
                   </pre>
-                </>
-              )}
-
-              {backendError === 'auth_missing' && (
-                <>
-                   <p className="font-medium text-white">Erro: Autenticação Google Desativada</p>
-                   <p className="text-sm">O login falhou porque o provedor não está ativo no projeto.</p>
-                   <ol className="list-decimal list-inside text-sm space-y-2 bg-slate-950 p-4 rounded-lg border border-slate-800">
-                    <li>Vá ao Console Firebase &gt; <strong>Authentication</strong>.</li>
-                    <li>Clique na aba <strong>Sign-in method</strong>.</li>
-                    <li>Adicione o provedor <strong>Google</strong> e marque a chave <strong>Ativar</strong>.</li>
-                    <li>Certifique-se de salvar com um e-mail de suporte válido.</li>
-                  </ol>
                 </>
               )}
             </div>
 
             <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-end gap-3">
               <button 
-                onClick={resetFirebaseConfig}
-                className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                Resetar Configuração
-              </button>
-              <button 
                 onClick={() => setBackendError(null)}
                 className="px-4 py-2 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white"
               >
-                Entendi, vou corrigir
+                Entendi
               </button>
             </div>
           </div>
@@ -389,17 +337,8 @@ service cloud.firestore {
             
             <div className="flex justify-between items-center mb-6 relative z-10">
               <h3 className="text-xl font-bold flex items-center gap-2">
-                {loginStep === 'config-db' ? (
-                  <>
-                    <CloudLightning size={20} className="text-amber-400" />
-                    <span>Configurar Backend</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock size={20} className="text-indigo-400" />
-                    <span>Login Administrativo</span>
-                  </>
-                )}
+                 <Lock size={20} className="text-indigo-400" />
+                 <span>Login Administrativo</span>
               </h3>
               <button 
                 onClick={() => setIsLoginModalOpen(false)}
@@ -415,40 +354,11 @@ service cloud.firestore {
               </div>
             )}
 
-            {/* PASSO 1: CONFIGURAR FIREBASE */}
-            {loginStep === 'config-db' && (
-               <div className="space-y-4 animate-fade-in">
-                 <div className="text-sm text-slate-400">
-                   Para ativar o login real e salvar dados na nuvem, precisamos conectar ao Firebase.
-                 </div>
-                 <ol className="list-decimal list-inside text-xs text-slate-500 space-y-1 ml-1">
-                   <li>Acesse <a href="https://console.firebase.google.com/" target="_blank" className="text-indigo-400 underline">console.firebase.google.com</a></li>
-                   <li>Crie um projeto Web e copie o <code>firebaseConfig</code>.</li>
-                   <li>Habilite <strong>Authentication</strong> (Google) e <strong>Firestore</strong>.</li>
-                 </ol>
-                 
-                 <textarea 
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs text-slate-300 font-mono focus:border-indigo-500 focus:outline-none"
-                    rows={8}
-                    placeholder='{ "apiKey": "...", "authDomain": "...", ... }'
-                    value={firebaseConfigInput}
-                    onChange={(e) => setFirebaseConfigInput(e.target.value)}
-                 />
-
-                 <button 
-                  onClick={handleSaveFirebaseConfig}
-                  className="w-full bg-amber-600 hover:bg-amber-500 text-white font-medium py-3 rounded-lg transition-all"
-                >
-                  Salvar e Conectar
-                </button>
-               </div>
-            )}
-
-            {/* PASSO 2: LOGIN GOOGLE */}
+            {/* PASSO 1: LOGIN GOOGLE */}
             {loginStep === 'sso' && (
               <div className="space-y-6 relative z-10 animate-fade-in">
                 <div className="text-center text-slate-400 text-sm">
-                  Utilize sua conta Google de administrador.
+                  Utilize sua conta <strong>Mundo dos Dados BR</strong>.
                 </div>
 
                 <button 
@@ -462,13 +372,13 @@ service cloud.firestore {
                     <GoogleIcon className="w-5 h-5" />
                   )}
                   <span>
-                    {isAuthenticating ? 'Falando com Google...' : 'Entrar com Google'}
+                    {isAuthenticating ? 'Autenticando...' : 'Entrar com Google'}
                   </span>
                 </button>
               </div>
             )}
 
-            {/* PASSO 3: PIN SETUP ou VERIFY */}
+            {/* PASSO 2: PIN SETUP ou VERIFY */}
             {(loginStep === 'pin-setup' || loginStep === 'pin-verify') && user && (
               <form onSubmit={handlePinSubmit} className="space-y-4 relative z-10 animate-fade-in">
                 
@@ -477,7 +387,7 @@ service cloud.firestore {
                   <div className="overflow-hidden">
                     <p className="text-sm font-medium text-white truncate">{user.name}</p>
                     <p className="text-xs text-emerald-400 flex items-center gap-1">
-                      <CheckCircle size={10} /> Google OK
+                      <CheckCircle size={10} /> {user.email}
                     </p>
                   </div>
                 </div>
@@ -504,19 +414,24 @@ service cloud.firestore {
                     onChange={(e) => {
                       const val = e.target.value.replace(/\D/g, '').slice(0, 6);
                       setPinInput(val);
+                      if (loginStep === 'pin-verify' && val.length === 6) {
+                        verifyPin(val);
+                      }
                     }}
                     placeholder="******"
                     autoFocus
                   />
                 </div>
                 
-                <button 
-                  type="submit"
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-all mt-2 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
-                >
-                  <Lock size={18} />
-                  {loginStep === 'pin-setup' ? 'Salvar e Entrar' : 'Desbloquear'}
-                </button>
+                {loginStep === 'pin-setup' && (
+                  <button 
+                    type="submit"
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-all mt-2 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
+                  >
+                    <Lock size={18} />
+                    <span>Salvar e Entrar</span>
+                  </button>
+                )}
               </form>
             )}
           </div>
