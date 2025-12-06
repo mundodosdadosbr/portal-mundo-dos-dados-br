@@ -191,7 +191,7 @@ const App: React.FC = () => {
       await loginWithCredentials(username, password);
       
       // 2. Check MFA Status
-      const hasMfa = checkMfaStatus();
+      const hasMfa = await checkMfaStatus();
       
       if (hasMfa) {
         setLoginStep('mfa-verify');
@@ -204,6 +204,7 @@ const App: React.FC = () => {
         setLoginStep('mfa-setup');
       }
     } catch (error: any) {
+      console.error(error);
       setLoginError(error.message || "Falha na autenticação.");
     } finally {
       setIsAuthenticating(false);
