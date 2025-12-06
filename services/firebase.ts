@@ -1,22 +1,6 @@
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
-  signOut, 
-  User 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  deleteDoc, 
-  onSnapshot,
-  query,
-  orderBy
-} from 'firebase/firestore';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 import * as OTPAuth from 'otpauth';
 import { SocialPost, CreatorProfile, LandingPageContent } from '../types';
 
@@ -31,10 +15,11 @@ const FIREBASE_CONFIG = {
   measurementId: "G-VXWK216WFZ"
 };
 
-// Initialize Firebase
-const app = initializeApp(FIREBASE_CONFIG);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// Initialize Firebase (Compat Pattern)
+// We check if apps are already initialized to avoid duplicates
+const app = firebase.apps.length === 0 ? firebase.initializeApp(FIREBASE_CONFIG) : firebase.app();
+const auth = firebase.auth();
+const db = firebase.firestore();
 
 // --- FALLBACK STATE ---
 // If Firebase Auth is disabled/misconfigured, we switch to local mock mode
@@ -72,9 +57,8 @@ export const checkMfaStatus = async (): Promise<boolean> => {
   if (!user) return false;
 
   try {
-    const mfaDocRef = doc(db, 'users', user.uid, 'private', 'mfa');
-    const mfaDoc = await getDoc(mfaDocRef);
-    return mfaDoc.exists();
+    const mfaDoc = await db.collection('users').doc(user.uid).collection('private').doc('mfa').get();
+    return mfaDoc.exists;
   } catch (error) {
     console.warn("MFA Check failed, falling back to false:", error);
     return false;
@@ -87,12 +71,13 @@ export const checkMfaStatus = async (): Promise<boolean> => {
  */
 export const loginWithCredentials = async (username: string, pass: string) => {
   let email = username;
-  if (username === 'admin') {
-    email = 'admin@creatornexus.com';
+  // Map simple username to email structure
+  if (username.indexOf('@') === -1) {
+    email = `${username}@creatornexus.com`;
   }
 
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+    const userCredential = await auth.signInWithEmailAndPassword(email, pass);
     return userCredential.user;
   } catch (error: any) {
     console.error("Login Error Details:", error.code);
@@ -103,30 +88,30 @@ export const loginWithCredentials = async (username: string, pass: string) => {
     if (error.code === 'auth/operation-not-allowed' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
       
       // Validate Hardcoded Credentials for the Mock/Fallback Mode
-      if (username === 'admin' && pass === 'password123') {
+      if (username === 'diego.morais' && pass === 'Z@nbet4df2026') {
         console.warn("⚠️ Firebase Auth disabled or failed. Switching to Local Mock Mode.");
         useMockFallback = true;
         
         // Return a Mock User Object
         return {
-          uid: 'mock-admin-user',
-          email: 'admin@creatornexus.com',
-          displayName: 'Admin (Local)'
-        } as User;
+          uid: 'mock-diego-user',
+          email: 'diego.morais@creatornexus.com',
+          displayName: 'Diego Morais'
+        } as any;
       }
       
       // If credentials don't match the hardcoded ones in fallback mode:
       if (useMockFallback || error.code === 'auth/operation-not-allowed') {
-         throw new Error('Senha incorreta (Modo Local).');
+         throw new Error('Credenciais incorretas.');
       }
     }
     
     // Attempt auto-creation as a last resort for real firebase
-    if ((error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') && email === 'admin@creatornexus.com' && !useMockFallback) {
+    if ((error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') && email === 'diego.morais@creatornexus.com' && !useMockFallback) {
       try {
-        const newUser = await createUserWithEmailAndPassword(auth, email, pass);
+        const newUser = await auth.createUserWithEmailAndPassword(email, pass);
         // Initialize default profile settings
-        await setDoc(doc(db, 'settings', 'global'), { youtubeApiKey: '' }, { merge: true });
+        await db.collection('settings').doc('global').set({ youtubeApiKey: '' }, { merge: true });
         return newUser.user;
       } catch (createError: any) {
          // If create fails, bubble up the original error
@@ -141,7 +126,7 @@ export const loginWithCredentials = async (username: string, pass: string) => {
  * Generates a TOTP secret and URL.
  */
 export const initiateMfaSetup = async () => {
-  const userLabel = useMockFallback ? 'Admin (Local)' : (auth.currentUser?.email || 'Admin');
+  const userLabel = useMockFallback ? 'Diego Morais (Local)' : (auth.currentUser?.email || 'Admin');
 
   // Generate a cryptographically secure random secret
   const secret = new OTPAuth.Secret({ size: 20 });
@@ -174,9 +159,8 @@ export const verifyMfaToken = async (token: string, pendingSecret?: string) => {
       secretStr = localStorage.getItem(MOCK_KEYS.MFA_SECRET) || undefined;
     } else if (auth.currentUser) {
       try {
-        const mfaDocRef = doc(db, 'users', auth.currentUser.uid, 'private', 'mfa');
-        const mfaDoc = await getDoc(mfaDocRef);
-        if (mfaDoc.exists()) secretStr = mfaDoc.data().secret;
+        const mfaDoc = await db.collection('users').doc(auth.currentUser.uid).collection('private').doc('mfa').get();
+        if (mfaDoc.exists) secretStr = mfaDoc.data()?.secret;
       } catch (e) { console.error(e); }
     }
   }
@@ -208,8 +192,7 @@ export const completeMfaSetup = async (secret: string) => {
   const user = auth.currentUser;
   if (!user) throw new Error("Usuário não autenticado.");
 
-  const mfaDocRef = doc(db, 'users', user.uid, 'private', 'mfa');
-  await setDoc(mfaDocRef, {
+  await db.collection('users').doc(user.uid).collection('private').doc('mfa').set({
     secret,
     createdAt: new Date().toISOString(),
     enabled: true
@@ -218,7 +201,7 @@ export const completeMfaSetup = async (secret: string) => {
 
 export const logout = async () => {
   if (!useMockFallback) {
-    await signOut(auth);
+    await auth.signOut();
   }
   // Mock mode state doesn't need explicit clearing other than UI state in App.tsx
 };
@@ -240,7 +223,7 @@ export const saveSettings = async (
   }
 
   try {
-    await setDoc(doc(db, 'settings', 'global'), data, { merge: true });
+    await db.collection('settings').doc('global').set(data, { merge: true });
   } catch (e) {
     console.error("Error saving settings:", e);
     // Fallback to local if DB fails
@@ -266,9 +249,9 @@ export const subscribeToSettings = (
     return () => window.removeEventListener('mock-settings-update', handler);
   }
 
-  return onSnapshot(doc(db, 'settings', 'global'), (doc) => {
-    if (doc.exists()) {
-      onUpdate(doc.data() as any);
+  return db.collection('settings').doc('global').onSnapshot((docSnap) => {
+    if (docSnap.exists) {
+      onUpdate(docSnap.data() as any);
     } else {
       // If doc doesn't exist yet, check local storage for legacy data
       const local = localStorage.getItem(MOCK_KEYS.SETTINGS);
@@ -299,7 +282,7 @@ export const savePost = async (post: SocialPost) => {
   }
 
   try {
-    await setDoc(doc(db, 'posts', post.id), post);
+    await db.collection('posts').doc(post.id).set(post);
   } catch (e) {
     console.error("Error saving post:", e);
   }
@@ -315,7 +298,7 @@ export const deletePostById = async (postId: string) => {
   }
 
   try {
-    await deleteDoc(doc(db, 'posts', postId));
+    await db.collection('posts').doc(postId).delete();
   } catch (e) {
     console.error("Error deleting post:", e);
   }
@@ -333,7 +316,7 @@ export const bulkSavePosts = async (posts: SocialPost[]) => {
     return;
   }
 
-  // Simple loop for firebase batch
+  // Simple loop for firebase batch (can be improved with writeBatch)
   posts.forEach(post => {
     savePost(post);
   });
@@ -352,9 +335,7 @@ export const subscribeToPosts = (
     return () => window.removeEventListener('mock-posts-update', handler);
   }
 
-  const q = query(collection(db, 'posts'), orderBy('date', 'desc'));
-  
-  return onSnapshot(q, (snapshot) => {
+  return db.collection('posts').orderBy('date', 'desc').onSnapshot((snapshot) => {
     const posts: SocialPost[] = [];
     snapshot.forEach((doc) => {
       posts.push(doc.data() as SocialPost);

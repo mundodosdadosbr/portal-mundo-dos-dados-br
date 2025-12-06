@@ -332,7 +332,7 @@ const App: React.FC = () => {
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-indigo-500 focus:outline-none"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="admin"
+                    placeholder="seu.usuario"
                     autoFocus
                   />
                 </div>
@@ -343,7 +343,7 @@ const App: React.FC = () => {
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-indigo-500 focus:outline-none"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="password123"
+                    placeholder="Sua senha segura"
                   />
                 </div>
                 <button 
@@ -359,9 +359,6 @@ const App: React.FC = () => {
                     </>
                   )}
                 </button>
-                <div className="text-center mt-4">
-                  <p className="text-xs text-slate-500">Credenciais Demo: admin / password123</p>
-                </div>
               </form>
             )}
 
