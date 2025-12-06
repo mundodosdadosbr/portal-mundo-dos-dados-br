@@ -29,15 +29,20 @@ import {
 
 interface AdminDashboardProps {
   posts: SocialPost[];
-  setPosts: React.Dispatch<React.SetStateAction<SocialPost[]>>;
+  setPosts: any; // Tipagem relaxada pois injetamos a logica no App
+  dbActions?: {
+    addPost: (p: SocialPost) => void;
+    deletePost: (id: string) => void;
+    syncPosts: (p: SocialPost[]) => void;
+  };
   onLogout: () => void;
   onViewPortal: () => void;
   landingContent: LandingPageContent;
-  setLandingContent: React.Dispatch<React.SetStateAction<LandingPageContent>>;
+  setLandingContent: (c: LandingPageContent) => void;
   profile: CreatorProfile;
-  setProfile: React.Dispatch<React.SetStateAction<CreatorProfile>>;
+  setProfile: (p: CreatorProfile) => void;
   youtubeApiKey: string;
-  setYoutubeApiKey: React.Dispatch<React.SetStateAction<string>>;
+  setYoutubeApiKey: (k: string) => void;
 }
 
 type AdminView = 'content' | 'integrations' | 'pages' | 'profile' | 'analytics';
@@ -45,6 +50,7 @@ type AdminView = 'content' | 'integrations' | 'pages' | 'profile' | 'analytics';
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   posts, 
   setPosts, 
+  dbActions,
   onLogout, 
   onViewPortal,
   landingContent,
@@ -82,7 +88,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleDelete = (id: string) => {
     if (confirm('Tem certeza que deseja excluir esta postagem?')) {
-      setPosts(posts.filter(p => p.id !== id));
+      if (dbActions) {
+        dbActions.deletePost(id);
+      } else {
+        // Fallback local state
+        setPosts(posts.filter(p => p.id !== id));
+      }
     }
   };
 
@@ -90,38 +101,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsSyncing(true);
     
     try {
-      // Passa a chave personalizada (se existir) para o serviço
       const realYoutubePosts = await getYouTubePosts('Mundo dos Dados BR', 20, youtubeApiKey);
-      
       const otherPlatformsMock = generateMockPostsForOtherPlatforms();
-
-      setPosts(prev => {
-        const newItems = [...realYoutubePosts, ...otherPlatformsMock];
-        const uniquePosts = [...newItems, ...prev].filter((post, index, self) => 
-          index === self.findIndex((t) => (
-            t.id === post.id
-          ))
-        );
-        return uniquePosts;
-      });
-
-      alert(`Sincronização concluída com sucesso! ${realYoutubePosts.length} vídeos reais do YouTube carregados.`);
+      
+      const combinedPosts = [...realYoutubePosts, ...otherPlatformsMock];
+      
+      if (dbActions) {
+        // Salva no Firestore
+        dbActions.syncPosts(combinedPosts);
+        alert(`Sincronização Cloud concluída! ${realYoutubePosts.length} vídeos salvos no banco de dados.`);
+      } else {
+        // Local only fallback
+        setPosts((prev: any) => {
+          const newItems = [...combinedPosts];
+          return [...newItems, ...prev];
+        });
+      }
 
     } catch (error: any) {
       console.error(error);
       const errorMessage = error.message || 'Erro desconhecido';
-      
-      let friendlyError = `Erro ao conectar com API do YouTube: ${errorMessage}`;
-      
-      if (errorMessage.includes('API Key') || errorMessage.includes('key')) {
-        friendlyError += '\n\nDICA: Vá na aba "Integrações" e configure uma Chave de API do YouTube válida com permissão "YouTube Data API v3".';
-      }
-
-      alert(friendlyError + "\n\nCarregando dados simulados como fallback para você não ficar sem conteúdo...");
-      
-      // Fallback
-      const mockPosts = generateMockPostsForOtherPlatforms(20);
-      setPosts(prev => [...mockPosts, ...prev]);
+      alert(`Erro na API YouTube: ${errorMessage}`);
     } finally {
       setIsSyncing(false);
     }
@@ -148,7 +148,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           likes: Math.floor(Math.random() * 5000),
           comments: Math.floor(Math.random() * 100),
           views: isVideo ? Math.floor(Math.random() * 20000) : undefined,
-          date: 'há instantes',
+          date: new Date().toISOString(), // Use ISO for better sorting in DB
           url: '#'
         } as SocialPost;
       });
@@ -180,15 +180,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleAddPost = (e: React.FormEvent) => {
     e.preventDefault();
-    const id = `new-${Date.now()}`;
+    const id = `manual-${Date.now()}`;
     const postToAdd = {
       ...newPost,
       id,
-      date: 'Agora mesmo',
+      date: new Date().toISOString(),
       url: '#'
     } as SocialPost;
     
-    setPosts([postToAdd, ...posts]);
+    if (dbActions) {
+      dbActions.addPost(postToAdd);
+    } else {
+      setPosts([postToAdd, ...posts]);
+    }
+
     setIsAddModalOpen(false);
     setNewPost({
       platform: Platform.YOUTUBE,
@@ -305,8 +310,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                        <tr>
                          <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
                            <CloudLightning className="mx-auto mb-2 opacity-50" size={32} />
-                           <p>Nenhuma postagem ainda.</p>
-                           <p className="text-sm">Clique em "Sincronizar Tudo" para buscar vídeos do Mundo dos Dados BR.</p>
+                           <p>Nenhuma postagem no Banco de Dados.</p>
+                           <p className="text-sm">Clique em "Sincronizar Tudo" para popular o Firestore.</p>
                          </td>
                        </tr>
                     ) : (
@@ -321,7 +326,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               />
                               <div className="max-w-xs">
                                 <div className="font-medium truncate text-white">{post.title || post.caption || 'Sem título'}</div>
-                                <div className="text-xs text-slate-500">{post.date}</div>
+                                <div className="text-xs text-slate-500">
+                                  {new Date(post.date).toLocaleDateString()}
+                                </div>
                               </div>
                             </div>
                           </td>
