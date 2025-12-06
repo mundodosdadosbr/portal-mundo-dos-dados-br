@@ -1,8 +1,26 @@
-
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  signOut, 
+  User 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  deleteDoc, 
+  onSnapshot,
+  query,
+  orderBy
+} from 'firebase/firestore';
+import * as OTPAuth from 'otpauth';
 import { SocialPost, CreatorProfile, LandingPageContent } from '../types';
 
-// --- HARDCODED CONFIGURATION ---
-// Automatically inserted as per request
+// --- PRODUCTION CONFIGURATION ---
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyAjf1-7YZZPENVJmz3-AxK28NkwrFUTOwo",
   authDomain: "auth-mdados.firebaseapp.com",
@@ -13,171 +31,246 @@ const FIREBASE_CONFIG = {
   measurementId: "G-VXWK216WFZ"
 };
 
-const DB_SETTINGS_KEY = 'nexus_db_settings';
-const DB_POSTS_KEY = 'nexus_db_posts';
+// Initialize Firebase
+const app = initializeApp(FIREBASE_CONFIG);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-// Helper to notify subscribers across the app (in the same window)
+// Helper to notify subscribers (kept for compatibility with UI hooks, though Firestore handles real-time)
 const dispatchUpdate = (event: string) => {
   window.dispatchEvent(new Event(event));
 };
 
-export const isFirebaseConfigured = (): boolean => {
-  // Always true now, since we hardcoded the config
-  return true;
-};
-
-export const resetFirebaseConfig = () => {
-  // No-op in this version as config is hardcoded
-  console.log("Configuration is hardcoded in source.");
-  window.location.reload();
-};
-
-export const saveFirebaseConfig = (config: any) => {
-  // No-op
-  console.log("Configuration is hardcoded in source.");
-};
-
 export const initFirebase = () => {
-  // Return dummy objects to satisfy call sites, using our hardcoded config conceptually
-  console.log("Initializing with Project ID:", FIREBASE_CONFIG.projectId);
-  return { app: {}, auth: {}, db: {} };
+  return { app, auth, db };
 };
 
-// --- AUTH ---
-export const loginWithGoogle = async () => {
-  // Simulate network delay
-  await new Promise(resolve => setTimeout(resolve, 800));
-  
-  // Return the specific requested admin user
-  return {
-    user: {
-      displayName: "Diego Morais",
-      email: "diego.morais@mundodosdadosbr.com",
-      photoURL: "https://ui-avatars.com/api/?name=Diego+Morais&background=0f172a&color=38bdf8&size=256"
-    }
-  };
-};
+// --- AUTHENTICATION & MFA SYSTEM (PRODUCTION) ---
 
-export const logout = async () => {
-  await new Promise(resolve => setTimeout(resolve, 300));
-};
+/**
+ * Checks if the current user has MFA configured in Firestore.
+ */
+export const checkMfaStatus = async (): Promise<boolean> => {
+  const user = auth.currentUser;
+  if (!user) return false;
 
-// --- DATABASE (LocalStorage Mock) ---
-
-// Generic getter
-const getStore = (key: string) => {
   try {
-    const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : null;
-  } catch {
-    return null;
+    // We store MFA secrets in a sub-collection or protected document
+    const mfaDocRef = doc(db, 'users', user.uid, 'private', 'mfa');
+    const mfaDoc = await getDoc(mfaDocRef);
+    return mfaDoc.exists();
+  } catch (error) {
+    console.error("Error checking MFA status:", error);
+    return false;
   }
 };
 
-// Generic setter
-const setStore = (key: string, value: any) => {
-  localStorage.setItem(key, JSON.stringify(value));
+/**
+ * Logs in with Email/Password. 
+ * Falls back to creating the user if it's the specific admin demo account and doesn't exist yet.
+ */
+export const loginWithCredentials = async (username: string, pass: string) => {
+  let email = username;
+  
+  // Helper for the demo: map 'admin' to an email
+  if (username === 'admin') {
+    email = 'admin@creatornexus.com';
+  }
+
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+    return userCredential.user;
+  } catch (error: any) {
+    // AUTO-CREATE ADMIN USER FOR FIRST TIME SETUP
+    if (error.code === 'auth/user-not-found' && email === 'admin@creatornexus.com') {
+      try {
+        const newUser = await createUserWithEmailAndPassword(auth, email, pass);
+        // Initialize default profile settings for new admin
+        const defaultProfileRef = doc(db, 'settings', 'global');
+        const docSnap = await getDoc(defaultProfileRef);
+        if (!docSnap.exists()) {
+           // Create initial structure if DB is empty
+           await setDoc(defaultProfileRef, {
+             youtubeApiKey: ''
+           }, { merge: true });
+        }
+        return newUser.user;
+      } catch (createError: any) {
+        throw new Error(mapAuthError(createError.code));
+      }
+    }
+    throw new Error(mapAuthError(error.code));
+  }
 };
+
+/**
+ * Generates a real TOTP secret and URL using otpauth library.
+ */
+export const initiateMfaSetup = async () => {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Usuário não autenticado.");
+
+  // Generate a cryptographically secure random secret
+  const secret = new OTPAuth.Secret({ size: 20 });
+  
+  // Create TOTP object
+  const totp = new OTPAuth.TOTP({
+    issuer: 'CreatorNexus',
+    label: user.email || 'Admin',
+    algorithm: 'SHA1',
+    digits: 6,
+    period: 30,
+    secret: secret
+  });
+
+  return {
+    secret: secret.base32,
+    otpauthUrl: totp.toString()
+  };
+};
+
+/**
+ * Verifies a TOTP token against the secret.
+ * If validating during setup, 'pendingSecret' is passed.
+ * If validating login, retrieves secret from Firestore.
+ */
+export const verifyMfaToken = async (token: string, pendingSecret?: string) => {
+  const user = auth.currentUser;
+  if (!user) return false;
+
+  let secretStr = pendingSecret;
+
+  // If no pending secret provided, fetch the stored one
+  if (!secretStr) {
+    const mfaDocRef = doc(db, 'users', user.uid, 'private', 'mfa');
+    const mfaDoc = await getDoc(mfaDocRef);
+    if (!mfaDoc.exists()) return false; // MFA not set up
+    secretStr = mfaDoc.data().secret;
+  }
+
+  if (!secretStr) return false;
+
+  // Validate using OTPAuth library
+  const totp = new OTPAuth.TOTP({
+    issuer: 'CreatorNexus',
+    label: user.email || 'Admin',
+    algorithm: 'SHA1',
+    digits: 6,
+    period: 30,
+    secret: OTPAuth.Secret.fromBase32(secretStr)
+  });
+
+  // validate() returns the delta (or null if invalid)
+  // window: 1 allows for 30 seconds clock drift
+  const delta = totp.validate({ token, window: 1 });
+  
+  return delta !== null;
+};
+
+/**
+ * Saves the verified MFA secret to Firestore.
+ */
+export const completeMfaSetup = async (secret: string) => {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Usuário não autenticado.");
+
+  const mfaDocRef = doc(db, 'users', user.uid, 'private', 'mfa');
+  await setDoc(mfaDocRef, {
+    secret,
+    createdAt: new Date().toISOString(),
+    enabled: true
+  });
+};
+
+export const logout = async () => {
+  await signOut(auth);
+};
+
+// --- FIRESTORE DATABASE (REAL-TIME) ---
 
 // Settings
 export const saveSettings = async (
   profile: CreatorProfile, 
   landingContent: LandingPageContent, 
-  youtubeApiKey: string,
-  securityPin?: string
+  youtubeApiKey: string
 ) => {
-  const current = getStore(DB_SETTINGS_KEY) || {};
-  const updated = {
-    ...current,
-    profile,
-    landingContent,
-    youtubeApiKey,
-    ...(securityPin ? { securityPin } : {})
-  };
-  setStore(DB_SETTINGS_KEY, updated);
-  dispatchUpdate('nexus_settings_updated');
+  try {
+    await setDoc(doc(db, 'settings', 'global'), {
+      profile,
+      landingContent,
+      youtubeApiKey
+    }, { merge: true });
+  } catch (e) {
+    console.error("Error saving settings:", e);
+  }
 };
 
 export const subscribeToSettings = (
   onUpdate: (data: { 
     profile?: CreatorProfile, 
     landingContent?: LandingPageContent, 
-    youtubeApiKey?: string,
-    securityPin?: string 
+    youtubeApiKey?: string
   }) => void,
   onError?: (error: any) => void
 ) => {
-  const load = () => {
-    const data = getStore(DB_SETTINGS_KEY);
-    if (data) onUpdate(data);
-  };
-  
-  // Initial load
-  load();
-
-  const listener = () => load();
-  window.addEventListener('nexus_settings_updated', listener);
-  
-  return () => window.removeEventListener('nexus_settings_updated', listener);
+  return onSnapshot(doc(db, 'settings', 'global'), (doc) => {
+    if (doc.exists()) {
+      onUpdate(doc.data() as any);
+    }
+  }, onError);
 };
 
 // Posts
 export const savePost = async (post: SocialPost) => {
-  const posts = getStore(DB_POSTS_KEY) || [];
-  const index = posts.findIndex((p: SocialPost) => p.id === post.id);
-  
-  if (index >= 0) {
-    posts[index] = post;
-  } else {
-    posts.unshift(post);
+  try {
+    await setDoc(doc(db, 'posts', post.id), post);
+  } catch (e) {
+    console.error("Error saving post:", e);
   }
-  
-  setStore(DB_POSTS_KEY, posts);
-  dispatchUpdate('nexus_posts_updated');
 };
 
 export const deletePostById = async (postId: string) => {
-  const posts = getStore(DB_POSTS_KEY) || [];
-  const filtered = posts.filter((p: SocialPost) => p.id !== postId);
-  setStore(DB_POSTS_KEY, filtered);
-  dispatchUpdate('nexus_posts_updated');
+  try {
+    await deleteDoc(doc(db, 'posts', postId));
+  } catch (e) {
+    console.error("Error deleting post:", e);
+  }
 };
 
 export const bulkSavePosts = async (posts: SocialPost[]) => {
-  const currentPosts = getStore(DB_POSTS_KEY) || [];
-  
-  // Upsert logic
-  posts.forEach(newPost => {
-    const idx = currentPosts.findIndex((p: SocialPost) => p.id === newPost.id);
-    if (idx >= 0) {
-      currentPosts[idx] = newPost;
-    } else {
-      currentPosts.push(newPost);
-    }
+  // Firestore batch write
+  // Note: Batch limit is 500 operations. For simplicity, we loop here, 
+  // but in high volume production, utilize writeBatch()
+  posts.forEach(post => {
+    savePost(post);
   });
-
-  // Sort by date descending
-  currentPosts.sort((a: SocialPost, b: SocialPost) => 
-    new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-
-  setStore(DB_POSTS_KEY, currentPosts);
-  dispatchUpdate('nexus_posts_updated');
 };
 
 export const subscribeToPosts = (
   onUpdate: (posts: SocialPost[]) => void,
   onError?: (error: any) => void
 ) => {
-  const load = () => {
-    const posts = getStore(DB_POSTS_KEY) || [];
+  // Query posts ordered by date descending
+  const q = query(collection(db, 'posts'), orderBy('date', 'desc'));
+  
+  return onSnapshot(q, (snapshot) => {
+    const posts: SocialPost[] = [];
+    snapshot.forEach((doc) => {
+      posts.push(doc.data() as SocialPost);
+    });
     onUpdate(posts);
-  };
-  
-  load();
-
-  const listener = () => load();
-  window.addEventListener('nexus_posts_updated', listener);
-  
-  return () => window.removeEventListener('nexus_posts_updated', listener);
+  }, onError);
 };
+
+
+// Helper
+function mapAuthError(code: string): string {
+  switch (code) {
+    case 'auth/invalid-email': return 'E-mail inválido.';
+    case 'auth/user-disabled': return 'Usuário desativado.';
+    case 'auth/user-not-found': return 'Usuário não encontrado.';
+    case 'auth/wrong-password': return 'Senha incorreta.';
+    case 'auth/invalid-credential': return 'Credenciais inválidas.';
+    default: return 'Erro na autenticação. Tente novamente.';
+  }
+}

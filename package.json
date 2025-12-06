@@ -13,6 +13,7 @@
     "react": "^19.2.1",
     "lucide-react": "^0.556.0",
     "@google/genai": "^1.31.0",
+    "otpauth": "latest",
     "firebase": "^12.6.0"
   },
   "devDependencies": {
