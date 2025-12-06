@@ -25,6 +25,7 @@ const db = firebase.firestore();
 // If Firebase Auth is disabled/misconfigured, we switch to local mock mode
 // so the user can still test the application.
 let useMockFallback = false;
+let currentMockUserEmail = '';
 
 // Mock Data Store (LocalStorage Keys)
 const MOCK_KEYS = {
@@ -43,26 +44,40 @@ export const initFirebase = () => {
   return { app, auth, db };
 };
 
+// --- HELPER: GET CONSISTENT USER ID ---
+// Returns the Real UID or a Stable Mock UID based on the email
+const getTargetUserId = () => {
+  if (auth.currentUser) return auth.currentUser.uid;
+  if (currentMockUserEmail === 'diego.morais@creatornexus.com') return 'mock-diego-user';
+  return 'mock-generic-user';
+};
+
 // --- AUTHENTICATION & MFA SYSTEM ---
 
 /**
  * Checks if the current user has MFA configured.
+ * CRITICAL UPDATE: Always attempts to check Cloud Firestore first, even in Mock Mode.
+ * This ensures that if I set up MFA on Chrome, Firefox knows about it (Cross-Browser Persistence).
  */
 export const checkMfaStatus = async (): Promise<boolean> => {
+  const userId = getTargetUserId();
+
+  try {
+    // 1. Try Cloud Check (Prioritize this even in fallback mode)
+    const mfaDoc = await db.collection('users').doc(userId).collection('private').doc('mfa').get();
+    if (mfaDoc.exists && mfaDoc.data()?.enabled) {
+      return true;
+    }
+  } catch (error) {
+    console.warn("Cloud MFA check failed (likely permission or network), trying local:", error);
+  }
+
+  // 2. Fallback to Local Storage if Cloud fails and we are in Mock Mode
   if (useMockFallback) {
     return !!localStorage.getItem(MOCK_KEYS.MFA_SECRET);
   }
 
-  const user = auth.currentUser;
-  if (!user) return false;
-
-  try {
-    const mfaDoc = await db.collection('users').doc(user.uid).collection('private').doc('mfa').get();
-    return mfaDoc.exists;
-  } catch (error) {
-    console.warn("MFA Check failed, falling back to false:", error);
-    return false;
-  }
+  return false;
 };
 
 /**
@@ -78,6 +93,7 @@ export const loginWithCredentials = async (username: string, pass: string) => {
 
   try {
     const userCredential = await auth.signInWithEmailAndPassword(email, pass);
+    useMockFallback = false; // Reset if real auth works
     return userCredential.user;
   } catch (error: any) {
     console.error("Login Error Details:", error.code);
@@ -91,6 +107,7 @@ export const loginWithCredentials = async (username: string, pass: string) => {
       if (username === 'diego.morais' && pass === 'Z@nbet4df2026') {
         console.warn("⚠️ Firebase Auth disabled or failed. Switching to Local Mock Mode.");
         useMockFallback = true;
+        currentMockUserEmail = 'diego.morais@creatornexus.com';
         
         // Return a Mock User Object
         return {
@@ -126,7 +143,7 @@ export const loginWithCredentials = async (username: string, pass: string) => {
  * Generates a TOTP secret and URL.
  */
 export const initiateMfaSetup = async () => {
-  const userLabel = useMockFallback ? 'Diego Morais (Local)' : (auth.currentUser?.email || 'Admin');
+  const userLabel = (auth.currentUser?.email || currentMockUserEmail || 'Admin');
 
   // Generate a cryptographically secure random secret
   const secret = new OTPAuth.Secret({ size: 20 });
@@ -152,16 +169,21 @@ export const initiateMfaSetup = async () => {
  */
 export const verifyMfaToken = async (token: string, pendingSecret?: string) => {
   let secretStr = pendingSecret;
+  const userId = getTargetUserId();
 
-  // If no pending secret, fetch stored secret
+  // If no pending secret (meaning we are verifying an existing setup), fetch stored secret
   if (!secretStr) {
-    if (useMockFallback) {
+    try {
+      // 1. Try Cloud
+      const mfaDoc = await db.collection('users').doc(userId).collection('private').doc('mfa').get();
+      if (mfaDoc.exists) {
+        secretStr = mfaDoc.data()?.secret;
+      }
+    } catch (e) { console.error("Cloud fetch failed for Verify:", e); }
+
+    // 2. Try Local (Fallback)
+    if (!secretStr && useMockFallback) {
       secretStr = localStorage.getItem(MOCK_KEYS.MFA_SECRET) || undefined;
-    } else if (auth.currentUser) {
-      try {
-        const mfaDoc = await db.collection('users').doc(auth.currentUser.uid).collection('private').doc('mfa').get();
-        if (mfaDoc.exists) secretStr = mfaDoc.data()?.secret;
-      } catch (e) { console.error(e); }
     }
   }
 
@@ -182,28 +204,39 @@ export const verifyMfaToken = async (token: string, pendingSecret?: string) => {
 
 /**
  * Saves the verified MFA secret.
+ * CRITICAL: Attempts to save to Cloud first to ensure other browsers see it.
  */
 export const completeMfaSetup = async (secret: string) => {
-  if (useMockFallback) {
-    localStorage.setItem(MOCK_KEYS.MFA_SECRET, secret);
-    return;
-  }
-
-  const user = auth.currentUser;
-  if (!user) throw new Error("Usuário não autenticado.");
-
-  await db.collection('users').doc(user.uid).collection('private').doc('mfa').set({
+  const userId = getTargetUserId();
+  const mfaData = {
     secret,
     createdAt: new Date().toISOString(),
     enabled: true
-  });
+  };
+
+  try {
+    // 1. Always try to write to Cloud DB, even if Auth is mocked.
+    // This allows Cross-Browser sync if DB permissions allow.
+    await db.collection('users').doc(userId).collection('private').doc('mfa').set(mfaData);
+    console.log("MFA Secret saved to Cloud Firestore");
+  } catch (e) {
+    console.error("Failed to save MFA to Cloud (Permissions/Network). Saving locally.", e);
+    // 2. If Cloud fails, save locally so at least this device works
+    if (useMockFallback) {
+      localStorage.setItem(MOCK_KEYS.MFA_SECRET, secret);
+    } else {
+      throw new Error("Não foi possível salvar a configuração MFA na nuvem.");
+    }
+  }
 };
 
 export const logout = async () => {
   if (!useMockFallback) {
     await auth.signOut();
   }
-  // Mock mode state doesn't need explicit clearing other than UI state in App.tsx
+  // Reset Mock state
+  useMockFallback = false;
+  currentMockUserEmail = '';
 };
 
 // --- DATABASE (HYBRID: FIREBASE OR LOCALSTORAGE) ---
