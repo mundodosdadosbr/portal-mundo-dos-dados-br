@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { SocialPost, Platform, CreatorProfile, LandingPageContent } from './types';
 import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
-import { X, Lock, Smartphone, GoogleIcon, CheckCircle, AlertTriangle, CloudLightning } from './components/Icons';
+import { X, Lock, Smartphone, GoogleIcon, CheckCircle, AlertTriangle, CloudLightning, ShieldCheck } from './components/Icons';
 import { 
   initFirebase, 
   isFirebaseConfigured, 
@@ -43,7 +44,7 @@ const INITIAL_LANDING_CONTENT: LandingPageContent = {
 };
 
 type ViewState = 'landing' | 'portal' | 'admin';
-type LoginStep = 'config-db' | 'sso' | 'mfa';
+type LoginStep = 'config-db' | 'sso' | 'pin-setup' | 'pin-verify';
 type BackendErrorType = 'permission' | 'auth_missing' | null;
 
 const App: React.FC = () => {
@@ -54,6 +55,7 @@ const App: React.FC = () => {
   const [landingContent, setLandingContent] = useState<LandingPageContent>(INITIAL_LANDING_CONTENT);
   const [profile, setProfile] = useState<CreatorProfile>(INITIAL_PROFILE);
   const [youtubeApiKey, setYoutubeApiKey] = useState('');
+  const [storedSecurityPin, setStoredSecurityPin] = useState<string | null>(null);
 
   // System State
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
@@ -68,7 +70,7 @@ const App: React.FC = () => {
   // Auth State
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const [mfaCode, setMfaCode] = useState('');
+  const [pinInput, setPinInput] = useState('');
   const [loginError, setLoginError] = useState('');
   
   // Firebase Config Form State
@@ -82,7 +84,6 @@ const App: React.FC = () => {
         if (app) {
           setIsFirebaseReady(true);
         } else {
-          // Config inválida
           setIsFirebaseReady(false);
         }
       } else {
@@ -108,6 +109,8 @@ const App: React.FC = () => {
       if (data.profile) setProfile(data.profile);
       if (data.landingContent) setLandingContent(data.landingContent);
       if (data.youtubeApiKey) setYoutubeApiKey(data.youtubeApiKey);
+      if (data.securityPin) setStoredSecurityPin(data.securityPin);
+      
       setIsLoadingData(false);
     }, handleFirestoreError);
 
@@ -185,7 +188,7 @@ const App: React.FC = () => {
 
     setIsLoginModalOpen(true);
     setLoginError('');
-    setMfaCode('');
+    setPinInput('');
 
     if (!isFirebaseReady) {
       setLoginStep('config-db');
@@ -206,7 +209,14 @@ const App: React.FC = () => {
         email: result.user.email,
         avatar: result.user.photoURL
       });
-      setLoginStep('mfa');
+      
+      // Decidir próximo passo baseado se o PIN já existe no banco
+      if (storedSecurityPin) {
+        setLoginStep('pin-verify');
+      } else {
+        setLoginStep('pin-setup');
+      }
+
     } catch (error: any) {
       console.error(error);
       if (error.code === 'auth/configuration-not-found' || error.code === 'auth/operation-not-supported-in-this-environment') {
@@ -220,18 +230,33 @@ const App: React.FC = () => {
     }
   };
 
-  const handleMfaSubmit = (e: React.FormEvent) => {
+  const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
-
-    const isValidFormat = /^\d{6}$/.test(mfaCode);
-
-    if (isValidFormat) {
-      setIsLoggedIn(true); 
-      setCurrentView('admin');
-      setIsLoginModalOpen(false);
-    } else {
-      setLoginError('Código inválido. Digite os 6 números do seu app.');
+    
+    // SETUP MODE
+    if (loginStep === 'pin-setup') {
+        if (pinInput.length < 4) {
+            setLoginError('O PIN deve ter pelo menos 4 dígitos.');
+            return;
+        }
+        // Salva o novo PIN no Firebase
+        await saveSettings(profile, landingContent, youtubeApiKey, pinInput);
+        setStoredSecurityPin(pinInput);
+        
+        setIsLoggedIn(true);
+        setCurrentView('admin');
+        setIsLoginModalOpen(false);
+    } 
+    // VERIFY MODE
+    else {
+        if (pinInput === storedSecurityPin) {
+            setIsLoggedIn(true);
+            setCurrentView('admin');
+            setIsLoginModalOpen(false);
+        } else {
+            setLoginError('PIN incorreto.');
+        }
     }
   };
 
@@ -443,46 +468,54 @@ service cloud.firestore {
               </div>
             )}
 
-            {/* PASSO 3: MFA */}
-            {loginStep === 'mfa' && user && (
-              <form onSubmit={handleMfaSubmit} className="space-y-4 relative z-10 animate-fade-in">
+            {/* PASSO 3: PIN SETUP ou VERIFY */}
+            {(loginStep === 'pin-setup' || loginStep === 'pin-verify') && user && (
+              <form onSubmit={handlePinSubmit} className="space-y-4 relative z-10 animate-fade-in">
                 
                 <div className="bg-slate-800/50 rounded-lg p-3 flex items-center space-x-3 mb-4 border border-slate-700">
                   <img src={user.avatar} alt="Avatar" className="w-10 h-10 rounded-full" />
                   <div className="overflow-hidden">
                     <p className="text-sm font-medium text-white truncate">{user.name}</p>
                     <p className="text-xs text-emerald-400 flex items-center gap-1">
-                      <CheckCircle size={10} /> Autenticado
+                      <CheckCircle size={10} /> Google OK
                     </p>
                   </div>
                 </div>
 
                 <div className="text-center mb-2">
-                  <p className="text-slate-300 text-sm">
-                     Digite o código do seu autenticador (MFA).
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-500/20 text-indigo-400 mb-3">
+                      <ShieldCheck size={24} />
+                  </div>
+                  <h4 className="text-lg font-bold text-white">
+                      {loginStep === 'pin-setup' ? 'Crie seu PIN de Admin' : 'PIN de Segurança'}
+                  </h4>
+                  <p className="text-slate-400 text-sm mt-1">
+                     {loginStep === 'pin-setup' 
+                        ? 'Defina uma senha numérica para proteger o painel.' 
+                        : 'Digite seu PIN para acessar.'}
                   </p>
                 </div>
 
                 <div>
                   <input 
-                    type="text" 
-                    className="w-full bg-slate-950 border border-emerald-500/50 rounded-lg p-3 text-center text-2xl tracking-[0.5em] font-mono text-white focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-all placeholder:tracking-normal placeholder:text-sm placeholder:font-sans"
-                    value={mfaCode}
+                    type="password" 
+                    className="w-full bg-slate-950 border border-indigo-500/50 rounded-lg p-3 text-center text-2xl tracking-[0.5em] font-mono text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 transition-all placeholder:tracking-normal placeholder:text-sm placeholder:font-sans"
+                    value={pinInput}
                     onChange={(e) => {
                       const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                      setMfaCode(val);
+                      setPinInput(val);
                     }}
-                    placeholder="000 000"
+                    placeholder="******"
                     autoFocus
                   />
                 </div>
                 
                 <button 
                   type="submit"
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-all mt-2 shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-all mt-2 shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2"
                 >
-                  <Smartphone size={18} />
-                  Verificar Código
+                  <Lock size={18} />
+                  {loginStep === 'pin-setup' ? 'Salvar e Entrar' : 'Desbloquear'}
                 </button>
               </form>
             )}
