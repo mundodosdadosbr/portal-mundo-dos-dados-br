@@ -8,6 +8,10 @@ export const DEFAULT_CLIENT_KEY = 'aw4f52prfxu4yqzx';
 export const DEFAULT_CLIENT_SECRET = 'ZoNVIyX4xracwFi08hwIwhMuFA3mwtPw';
 const REDIRECT_URI = window.location.origin; // e.g. http://localhost:3000
 
+// Proxy to bypass CORS on localhost
+// Use corsproxy.io to route requests (Proxy -> TikTok -> Client)
+const CORS_PROXY = 'https://corsproxy.io/?';
+
 /**
  * 1. Generates the TikTok Login URL
  */
@@ -28,8 +32,7 @@ export const getTikTokAuthUrl = (clientKey: string) => {
 
 /**
  * 2. Exchange Authorization Code for Access Token
- * NOTE: This usually requires a backend due to CORS. 
- * If running on localhost, you might need a CORS extension or proxy.
+ * Uses CORS Proxy to avoid browser blocking
  */
 export const exchangeTikTokCode = async (code: string, clientKey: string, clientSecret: string) => {
   const params = new URLSearchParams();
@@ -40,7 +43,10 @@ export const exchangeTikTokCode = async (code: string, clientKey: string, client
   params.append('redirect_uri', REDIRECT_URI);
 
   try {
-    const response = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+    const targetUrl = 'https://open.tiktokapis.com/v2/oauth/token/';
+    
+    // Using CORS proxy and encoding the target URL
+    const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -71,6 +77,7 @@ export const exchangeTikTokCode = async (code: string, clientKey: string, client
 
 /**
  * 3. Refresh Access Token (Auto-Renew logic)
+ * Uses CORS Proxy to avoid browser blocking
  */
 export const refreshTikTokToken = async (refreshToken: string, clientKey: string, clientSecret: string) => {
   const params = new URLSearchParams();
@@ -80,7 +87,9 @@ export const refreshTikTokToken = async (refreshToken: string, clientKey: string
   params.append('refresh_token', refreshToken);
 
   try {
-    const response = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+    const targetUrl = 'https://open.tiktokapis.com/v2/oauth/token/';
+    
+    const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -107,6 +116,7 @@ export const refreshTikTokToken = async (refreshToken: string, clientKey: string
 
 /**
  * 4. Fetch Posts (Main Logic)
+ * Uses CORS Proxy to avoid browser blocking
  */
 export const getTikTokPosts = async (
   username: string = 'mundo.dos.dados5', 
@@ -149,7 +159,9 @@ export const getTikTokPosts = async (
       // API call to get video list
       const fields = "id,title,cover_image_url,like_count,comment_count,view_count,create_time,share_url";
       
-      const response = await fetch(`https://open.tiktokapis.com/v2/video/list/?fields=${fields}`, {
+      const targetUrl = `https://open.tiktokapis.com/v2/video/list/?fields=${fields}`;
+
+      const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${validAccessToken}`,
