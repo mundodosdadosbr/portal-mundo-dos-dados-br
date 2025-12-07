@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   Platform, 
@@ -101,7 +102,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsSyncing(true);
     
     try {
-      const realYoutubePosts = await getYouTubePosts('Mundo dos Dados BR', 20, youtubeApiKey);
+      // FIX: Usando o handle específico para garantir a busca no canal correto
+      const realYoutubePosts = await getYouTubePosts('@MundodosDadosBR', 20, youtubeApiKey);
       const otherPlatformsMock = generateMockPostsForOtherPlatforms();
       
       const combinedPosts = [...realYoutubePosts, ...otherPlatformsMock];
