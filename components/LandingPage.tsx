@@ -1,5 +1,6 @@
-import React from 'react';
-import { Sparkles, TrendingUp, Users, LayoutDashboard, CloudLightning } from './Icons';
+
+import React, { useState } from 'react';
+import { Sparkles, TrendingUp, Users, LayoutDashboard, CloudLightning, X, ShieldCheck, Lock, Smartphone, Mail, Github } from './Icons';
 import { LandingPageContent } from '../types';
 
 interface LandingPageProps {
@@ -9,6 +10,99 @@ interface LandingPageProps {
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdminLogin, content }) => {
+  const [activeLegalModal, setActiveLegalModal] = useState<'privacy' | 'terms' | null>(null);
+
+  const LEGAL_CONTENT = {
+    privacy: {
+      title: "Política de Privacidade",
+      updated: "Atualizado em: 25 de Maio de 2024",
+      content: (
+        <div className="space-y-4 text-slate-300 text-sm leading-relaxed">
+          <p>
+            O <strong>CreatorNexus</strong> valoriza a sua privacidade. Esta política descreve como coletamos, usamos e protegemos as suas informações ao utilizar nossa plataforma de agregação de conteúdo.
+          </p>
+          
+          <h4 className="text-white font-bold mt-4">1. Coleta e Armazenamento de Dados</h4>
+          <p>
+            O CreatorNexus opera primariamente como uma aplicação "Client-Side". Isso significa que:
+          </p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li><strong>Credenciais (API Keys/Tokens):</strong> Suas chaves de API do YouTube e Tokens do TikTok são armazenados estritamente no <strong>Armazenamento Local (LocalStorage)</strong> do seu navegador. Nós não salvamos essas chaves em servidores externos.</li>
+            <li><strong>Dados de Perfil:</strong> Informações como biografia, links e preferências visuais são salvas localmente no seu dispositivo.</li>
+          </ul>
+
+          <h4 className="text-white font-bold mt-4">2. Uso de APIs de Terceiros</h4>
+          <p>
+            Para fornecer o painel unificado, utilizamos serviços oficiais de terceiros. Ao utilizar o CreatorNexus, você reconhece e concorda com as práticas de privacidade destes serviços:
+          </p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li><strong>YouTube API Services:</strong> Utilizamos a API do YouTube para exibir vídeos e estatísticas. Dados acessados via API do YouTube são processados de acordo com a <a href="https://policies.google.com/privacy" target="_blank" className="text-indigo-400 underline">Política de Privacidade do Google</a>.</li>
+            <li><strong>TikTok API:</strong> Utilizamos a API do TikTok para exibir seus vídeos verticais. Dados são tratados conforme a Política de Privacidade do TikTok.</li>
+            <li><strong>Google Gemini (IA):</strong> Se utilizar os recursos de IA, o texto do seu post é enviado para a API do Google Gemini para processamento. Nenhuma informação pessoal identificável é armazenada por nós nesse processo.</li>
+          </ul>
+
+          <h4 className="text-white font-bold mt-4">3. Compartilhamento de Dados</h4>
+          <p>
+            Nós <strong>não vendemos, alugamos ou compartilhamos</strong> seus dados pessoais com terceiros. Como as chaves de acesso ficam no seu dispositivo, você tem controle total sobre o acesso à sua conta.
+          </p>
+
+          <h4 className="text-white font-bold mt-4">4. Seus Direitos</h4>
+          <p>
+            Você pode revogar o acesso do CreatorNexus aos seus dados a qualquer momento:
+          </p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>Limpando o cache/dados do seu navegador.</li>
+            <li>Revogando o acesso do app nas configurações de segurança da sua conta Google ou TikTok (Página de Permissões de Apps de Terceiros).</li>
+          </ul>
+        </div>
+      )
+    },
+    terms: {
+      title: "Termos de Uso",
+      updated: "Atualizado em: 25 de Maio de 2024",
+      content: (
+        <div className="space-y-4 text-slate-300 text-sm leading-relaxed">
+          <p>
+            Ao acessar e usar o <strong>CreatorNexus</strong>, você concorda em cumprir estes Termos de Uso. Se você não concordar com algum destes termos, você está proibido de usar este site.
+          </p>
+
+          <h4 className="text-white font-bold mt-4">1. Licença de Uso</h4>
+          <p>
+            O CreatorNexus concede a você uma licença limitada, não exclusiva e intransferível para usar a plataforma para fins pessoais ou comerciais de gerenciamento de conteúdo, sujeito a estes termos.
+          </p>
+
+          <h4 className="text-white font-bold mt-4">2. Conformidade com Plataformas</h4>
+          <p>
+            Nossa ferramenta agrega dados de múltiplas redes sociais. Ao usá-la, você concorda explicitamente em seguir os Termos de Serviço das respectivas plataformas:
+          </p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>
+              Ao conectar o YouTube, você concorda em estar vinculado aos <a href="https://www.youtube.com/t/terms" target="_blank" className="text-indigo-400 underline">Termos de Serviço do YouTube</a>.
+            </li>
+            <li>
+              Ao conectar o TikTok, você concorda com os Termos de Serviço do Desenvolvedor do TikTok.
+            </li>
+          </ul>
+
+          <h4 className="text-white font-bold mt-4">3. Propriedade Intelectual</h4>
+          <p>
+            O código-fonte, design e funcionalidades do CreatorNexus são propriedade exclusiva dos desenvolvedores. O <strong>conteúdo</strong> (vídeos, textos, imagens) exibido no painel permanece sendo propriedade dos seus respectivos criadores.
+          </p>
+
+          <h4 className="text-white font-bold mt-4">4. Isenção de Garantias</h4>
+          <p>
+            O serviço é fornecido "como está". Não garantimos que a plataforma estará livre de erros ou que as APIs de terceiros (YouTube/TikTok) funcionarão ininterruptamente, pois dependemos de suas disponibilidades e regras.
+          </p>
+
+          <h4 className="text-white font-bold mt-4">5. Limitação de Responsabilidade</h4>
+          <p>
+            Em nenhum caso o CreatorNexus ou seus fornecedores serão responsáveis por quaisquer danos (incluindo, sem limitação, danos por perda de dados ou lucro) decorrentes do uso ou da incapacidade de usar a plataforma.
+          </p>
+        </div>
+      )
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Navbar */}
@@ -125,14 +219,103 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdmi
           <div className="flex items-center space-x-2 mb-4 md:mb-0">
              <span className="font-semibold text-slate-400">&copy; {new Date().getFullYear()} {content.headline}</span>
           </div>
-          <div className="flex space-x-6 text-sm">
-            <a href="#" className="hover:text-white transition-colors">Privacidade</a>
-            <a href="#" className="hover:text-white transition-colors">Termos</a>
-            <a href="#" className="hover:text-white transition-colors">Contato</a>
+          <div className="flex flex-wrap justify-center gap-6 text-sm">
+            <button 
+              onClick={() => setActiveLegalModal('privacy')} 
+              className="hover:text-white transition-colors"
+            >
+              Privacidade
+            </button>
+            <button 
+              onClick={() => setActiveLegalModal('terms')} 
+              className="hover:text-white transition-colors"
+            >
+              Termos
+            </button>
+            
+            <div className="w-px h-4 bg-slate-800 my-auto hidden sm:block"></div>
+            
+            <a 
+              href="https://wa.me/5561998763933" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="hover:text-emerald-400 transition-colors flex items-center gap-2 font-medium"
+            >
+              <Smartphone size={16} />
+              <span>WhatsApp</span>
+            </a>
+            
+            <a 
+              href="mailto:diego.morais@mundodosdadosbr.com" 
+              className="hover:text-indigo-400 transition-colors flex items-center gap-2 font-medium"
+            >
+              <Mail size={16} />
+              <span>Email</span>
+            </a>
+
+            <a 
+              href="https://github.com/mundodosdadosbr" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="hover:text-purple-400 transition-colors flex items-center gap-2 font-medium"
+            >
+              <Github size={16} />
+              <span>GitHub</span>
+            </a>
+
+            <div className="w-px h-4 bg-slate-800 my-auto hidden sm:block"></div>
+
             <button onClick={onAdminLogin} className="hover:text-white transition-colors">Área Restrita</button>
           </div>
         </div>
       </footer>
+
+      {/* Legal Modal */}
+      {activeLegalModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 w-full max-w-2xl rounded-2xl border border-slate-700 shadow-2xl relative flex flex-col max-h-[85vh]">
+            
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-6 border-b border-slate-800 bg-slate-900/50 sticky top-0 rounded-t-2xl z-10">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-400">
+                  {activeLegalModal === 'privacy' ? <ShieldCheck size={20} /> : <Lock size={20} />}
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">
+                    {LEGAL_CONTENT[activeLegalModal].title}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {LEGAL_CONTENT[activeLegalModal].updated}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setActiveLegalModal(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-full hover:bg-slate-800 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-8 overflow-y-auto">
+              {LEGAL_CONTENT[activeLegalModal].content}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-800 bg-slate-900/50 rounded-b-2xl flex justify-end">
+              <button 
+                onClick={() => setActiveLegalModal(null)}
+                className="bg-slate-800 hover:bg-slate-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };

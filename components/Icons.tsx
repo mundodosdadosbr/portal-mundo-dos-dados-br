@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   Youtube, 
@@ -27,7 +28,9 @@ import {
   Link2,
   CloudLightning,
   QrCode,
-  AlertTriangle
+  AlertTriangle,
+  Mail,
+  Github
 } from 'lucide-react';
 
 export { 
@@ -58,7 +61,9 @@ export {
   Link2,
   CloudLightning,
   QrCode,
-  AlertTriangle
+  AlertTriangle,
+  Mail,
+  Github
 };
 
 // Custom TikTok icon component
