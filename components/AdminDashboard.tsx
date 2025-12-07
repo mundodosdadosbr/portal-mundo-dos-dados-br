@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   Platform, 
@@ -37,6 +38,7 @@ interface AdminDashboardProps {
     addPost: (p: SocialPost) => void;
     deletePost: (id: string) => void;
     syncPosts: (p: SocialPost[]) => void;
+    clearPosts: () => void;
   };
   onLogout: () => void;
   onViewPortal: () => void;
@@ -103,6 +105,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleClearAll = () => {
+    if (confirm('Tem certeza que deseja apagar TODAS as postagens? Esta ação não pode ser desfeita.')) {
+      if (dbActions && dbActions.clearPosts) {
+        dbActions.clearPosts();
+      } else {
+        setPosts([]);
+      }
+    }
+  };
+
   const handleSync = async () => {
     setIsSyncing(true);
     
@@ -129,14 +141,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       );
 
-      // 3. Mock para outras plataformas
-      const otherPlatformsMock = generateMockPostsForOtherPlatforms();
-      
-      const combinedPosts = [...realYoutubePosts, ...tiktokPosts, ...otherPlatformsMock];
+      // 3. NO MOCK for other platforms (As requested by user)
+      const combinedPosts = [...realYoutubePosts, ...tiktokPosts];
       
       if (dbActions) {
         dbActions.syncPosts(combinedPosts);
-        alert(`Sincronização concluída!\n\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nOutros: ${otherPlatformsMock.length}`);
+        alert(`Sincronização concluída!\n\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}`);
       } else {
         setPosts((prev: any) => {
           const newItems = [...combinedPosts];
@@ -151,31 +161,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } finally {
       setIsSyncing(false);
     }
-  };
-
-  const generateMockPostsForOtherPlatforms = (count = 3) => {
-      const platforms = [Platform.INSTAGRAM, Platform.FACEBOOK];
-      const titles = [
-        "Bastidores do escritório", "Dashboard Power BI", "Vida de Data Scientist", "Review Livro Dados", 
-        "Café e ETL", "Notícias Big Data"
-      ];
-      
-      return Array.from({ length: count }).map((_, i) => {
-        const platform = platforms[Math.floor(Math.random() * platforms.length)];
-        
-        return {
-          id: `sync-mock-${Date.now()}-${i}`,
-          platform,
-          thumbnailUrl: `https://picsum.photos/seed/${Math.random()}/500/500`,
-          title: undefined,
-          caption: `${titles[Math.floor(Math.random() * titles.length)]} - Confira no ${platform}! 🚀`,
-          likes: Math.floor(Math.random() * 5000),
-          comments: Math.floor(Math.random() * 100),
-          views: undefined,
-          date: new Date().toISOString(),
-          url: '#'
-        } as SocialPost;
-      });
   };
 
   const handleConnectTikTok = () => {
@@ -323,6 +308,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <h1 className="text-xl font-semibold">Gerenciar Postagens</h1>
               <div className="flex space-x-3">
                 <button 
+                  onClick={handleClearAll}
+                  className="bg-red-900/30 hover:bg-red-900/50 text-red-400 hover:text-red-300 px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium border border-red-900/50"
+                  title="Apagar todos os posts"
+                >
+                  <Trash2 size={16} />
+                  <span>Limpar Tudo</span>
+                </button>
+                <div className="w-px h-8 bg-slate-800 mx-2"></div>
+                <button 
                   onClick={handleSync}
                   disabled={isSyncing}
                   className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium border border-slate-700"
@@ -357,7 +351,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                          <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
                            <CloudLightning className="mx-auto mb-2 opacity-50" size={32} />
                            <p>Nenhuma postagem no Banco de Dados.</p>
-                           <p className="text-sm">Clique em "Sincronizar Tudo" para popular o Firestore.</p>
+                           <p className="text-sm">Clique em "Sincronizar Tudo" para buscar dados reais.</p>
                          </td>
                        </tr>
                     ) : (

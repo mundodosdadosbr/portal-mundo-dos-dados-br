@@ -1,3 +1,4 @@
+
 import { SocialPost, Platform } from '../types';
 
 // Default Credentials (from user input)
@@ -180,36 +181,10 @@ export const getTikTokPosts = async (
       }
 
     } catch (error) {
-      console.warn("TikTok API call failed (using mock fallback):", error);
+      console.warn("TikTok API call failed:", error);
     }
   }
 
-  // MOCK FALLBACK
-  await new Promise(resolve => setTimeout(resolve, 1500));
-  const cleanUser = username.replace('@', '');
-
-  return [
-    {
-      id: `tt-video-1`,
-      platform: Platform.TIKTOK,
-      thumbnailUrl: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1000&auto=format&fit=crop', 
-      caption: "O poder do SQL em 15 segundos! 🚀 Nunca foi tão fácil aprender queries. #dados #sql #tech #programacao",
-      likes: 15420,
-      comments: 342,
-      views: 85000,
-      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), 
-      url: `https://www.tiktok.com/@${cleanUser}/video/1`
-    },
-    {
-      id: `tt-video-2`,
-      platform: Platform.TIKTOK,
-      thumbnailUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=1000&auto=format&fit=crop', 
-      caption: "Python ou R? Qual você prefere para Data Science? 👇 Deixa nos comentários! #datascience #python #coding",
-      likes: 8900,
-      comments: 1250,
-      views: 42100,
-      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(), 
-      url: `https://www.tiktok.com/@${cleanUser}/video/2`
-    }
-  ];
+  // No mock fallback anymore
+  return [];
 };

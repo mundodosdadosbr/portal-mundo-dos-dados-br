@@ -10,8 +10,8 @@ export const getYouTubePosts = async (
   const apiKey = customApiKey || process.env.YOUTUBE_API_KEY || '';
   
   if (!apiKey) {
-    console.warn("YouTube API Key missing. Returning mock data.");
-    return mockYouTubeData(); 
+    console.warn("YouTube API Key missing.");
+    return []; 
   }
 
   try {
@@ -83,23 +83,6 @@ export const getYouTubePosts = async (
 
   } catch (error) {
     console.error("YouTube Service Error:", error);
-    // Em caso de erro, retorna mock para não quebrar a UI
-    return mockYouTubeData();
+    return [];
   }
-};
-
-// Fallback Mock Data ajustado para o contexto
-const mockYouTubeData = (): SocialPost[] => {
-  return Array.from({ length: 6 }).map((_, i) => ({
-    id: `mock-yt-${i}`,
-    platform: Platform.YOUTUBE,
-    title: `Mundo dos Dados - Análise #${i + 1}`,
-    caption: "Vídeo exclusivo do canal Mundo dos Dados BR sobre tendências de tecnologia.",
-    thumbnailUrl: `https://picsum.photos/seed/mdbr${i}/400/225`,
-    date: new Date().toISOString(),
-    url: 'https://www.youtube.com/@MundodosDadosBR',
-    likes: 120 + i * 10,
-    comments: 5 + i,
-    views: 1000 + i * 50
-  }));
 };

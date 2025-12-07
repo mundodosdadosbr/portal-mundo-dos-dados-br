@@ -19,6 +19,7 @@ import {
   savePost,
   deletePostById,
   bulkSavePosts,
+  clearAllPosts,
   isAuthenticated,
   TikTokAuthData
 } from './services/firebase';
@@ -226,6 +227,10 @@ const App: React.FC = () => {
     syncPosts: (posts: SocialPost[]) => {
       bulkSavePosts(posts);
       setPosts(prev => [...posts, ...prev]);
+    },
+    clearPosts: () => {
+      clearAllPosts();
+      setPosts([]);
     }
   };
 

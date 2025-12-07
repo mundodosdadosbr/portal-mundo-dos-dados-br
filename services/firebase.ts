@@ -205,6 +205,11 @@ export const deletePostById = async (postId: string) => {
   window.dispatchEvent(new Event('nexus-posts-update'));
 };
 
+export const clearAllPosts = async () => {
+  localStorage.removeItem(KEY_POSTS);
+  window.dispatchEvent(new Event('nexus-posts-update'));
+};
+
 export const bulkSavePosts = async (newPosts: SocialPost[]) => {
   const postsStr = localStorage.getItem(KEY_POSTS);
   let posts: SocialPost[] = postsStr ? JSON.parse(postsStr) : [];
