@@ -27,12 +27,13 @@ import * as OTPAuth from 'otpauth';
 // 2. Crie um projeto e adicione um "Web App"
 // 3. Copie as configurações e cole abaixo:
 const firebaseConfig = {
-  apiKey: "SUA_API_KEY_AQUI",
-  authDomain: "SEU_PROJETO.firebaseapp.com",
-  projectId: "SEU_PROJECT_ID",
-  storageBucket: "SEU_PROJETO.appspot.com",
-  messagingSenderId: "SEU_MESSAGING_ID",
-  appId: "SEU_APP_ID"
+  apiKey: "AIzaSyAjf1-7YZZPENVJmz3-AxK28NkwrFUTOwo",
+  authDomain: "auth-mdados.firebaseapp.com",
+  projectId: "auth-mdados",
+  storageBucket: "auth-mdados.firebasestorage.app",
+  messagingSenderId: "175480776630",
+  appId: "1:175480776630:web:774466fd006655149f4317",
+  measurementId: "G-VXWK216WFZ"
 };
 
 // --- VARIÁVEIS DE CONTROLE ---
@@ -125,6 +126,19 @@ export const isAuthenticated = () => {
   return !!localStorage.getItem(KEY_AUTH_TOKEN);
 };
 
+// Helper para login local (evitar duplicação de código)
+const performLocalLogin = async (username: string, pass: string) => {
+  await new Promise(resolve => setTimeout(resolve, 800)); // Simula delay
+  const VALID_USER = 'diego.morais';
+  const VALID_PASS = 'Z@nbet4df2026'; // Sua senha definida anteriormente
+  
+  if (username === VALID_USER && pass === VALID_PASS) {
+    localStorage.setItem(KEY_AUTH_TOKEN, 'mock-session-active');
+    return MOCK_USER;
+  }
+  throw new Error("Usuário ou senha incorretos (Modo Local).");
+};
+
 export const loginWithCredentials = async (username: string, pass: string) => {
   if (shouldUseCloud) {
     // 1. Modo Nuvem: Login real
@@ -136,19 +150,24 @@ export const loginWithCredentials = async (username: string, pass: string) => {
       return userCredential.user;
     } catch (error: any) {
       console.error("Erro Firebase Auth:", error.code);
-      throw new Error("Usuário ou senha incorretos (Firebase).");
+
+      // --- FALLBACK INTELIGENTE ---
+      // Se o Firebase estiver configurado mas o "Email Provider" estiver desativado no console,
+      // cai para o login local automaticamente para não travar o usuário.
+      if (error.code === 'auth/operation-not-allowed') {
+        console.warn("⚠️ Provider Email/Senha desativado no Firebase Console. Usando fallback local.");
+        return performLocalLogin(username, pass);
+      }
+
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+         throw new Error("Usuário ou senha incorretos.");
+      }
+      
+      throw new Error(`Erro no login: ${error.message}`);
     }
   } else {
-    // 2. Modo Local: Login Hardcoded
-    await new Promise(resolve => setTimeout(resolve, 800)); // Simula delay
-    const VALID_USER = 'diego.morais';
-    const VALID_PASS = 'Z@nbet4df2026'; // Sua senha definida anteriormente
-    
-    if (username === VALID_USER && pass === VALID_PASS) {
-      localStorage.setItem(KEY_AUTH_TOKEN, 'mock-session-active');
-      return MOCK_USER;
-    }
-    throw new Error("Usuário ou senha incorretos (Modo Local).");
+    // 2. Modo Local Direto
+    return performLocalLogin(username, pass);
   }
 };
 
@@ -170,7 +189,9 @@ export const checkMfaStatus = async (): Promise<boolean> => {
       return docSnap.exists();
     } catch (e) {
       console.error("Erro ao verificar MFA na nuvem:", e);
-      return false;
+      // Fallback para local storage em caso de erro na permissão
+      const secret = localStorage.getItem(KEY_MFA_SECRET);
+      return !!secret;
     }
   }
   
@@ -198,10 +219,15 @@ export const verifyMfaToken = async (token: string, pendingSecret?: string) => {
   // Se não foi passado um segredo pendente (setup), tenta buscar do banco
   if (!secretStr) {
     if (shouldUseCloud && auth?.currentUser) {
-       const docRef = doc(db, 'users', auth.currentUser.uid, 'settings', 'mfa');
-       const docSnap = await getDoc(docRef);
-       if (docSnap.exists()) {
-         secretStr = docSnap.data().secret;
+       try {
+         const docRef = doc(db, 'users', auth.currentUser.uid, 'settings', 'mfa');
+         const docSnap = await getDoc(docRef);
+         if (docSnap.exists()) {
+           secretStr = docSnap.data().secret;
+         }
+       } catch (e) {
+         // Fallback local
+         secretStr = localStorage.getItem(KEY_MFA_SECRET) || undefined;
        }
     } else {
       secretStr = localStorage.getItem(KEY_MFA_SECRET) || undefined;
@@ -225,11 +251,15 @@ export const verifyMfaToken = async (token: string, pendingSecret?: string) => {
 
 export const completeMfaSetup = async (secret: string) => {
   if (shouldUseCloud && auth?.currentUser) {
-    // Salva na nuvem para não pedir de novo em outro PC
-    await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'mfa'), {
-      secret,
-      updatedAt: new Date().toISOString()
-    });
+    try {
+      // Salva na nuvem para não pedir de novo em outro PC
+      await setDoc(doc(db, 'users', auth.currentUser.uid, 'settings', 'mfa'), {
+        secret,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Erro ao salvar MFA na nuvem:", e);
+    }
   }
   // Mantém local também por garantia
   localStorage.setItem(KEY_MFA_SECRET, secret);
