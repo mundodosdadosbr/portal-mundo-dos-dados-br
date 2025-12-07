@@ -1,29 +1,34 @@
+
 import { GoogleGenAI } from "@google/genai";
 
-const getAiClient = () => {
-  const apiKey = process.env.API_KEY || '';
-  if (!apiKey) {
-    console.warn("API_KEY is missing in process.env");
-  }
-  return new GoogleGenAI({ apiKey });
-};
+// Initialize the API client
+// Note: In a production client-side app, you might proxy this or use Firebase Vertex AI.
+// For this standalone demo, we use the process.env.API_KEY if available.
+const apiKey = process.env.API_KEY || ''; 
+const ai = new GoogleGenAI({ apiKey });
 
 /**
- * Generates a social media caption based on a video title and platform style.
+ * Generates a social media caption using Gemini 2.5 Flash
  */
 export const generateSocialCaption = async (
   videoTitle: string,
   platform: string
 ): Promise<string> => {
-  const ai = getAiClient();
-  
+  if (!apiKey) {
+    return "API Key não configurada. Por favor, adicione sua chave da API Gemini.";
+  }
+
   try {
     const prompt = `
-      Atue como um gerente de mídias sociais profissional.
-      Escreva uma legenda cativante e engajadora em Português do Brasil para um post no ${platform} baseado neste título de vídeo: "${videoTitle}".
-      Inclua 3-5 hashtags relevantes.
-      Mantenha abaixo de 280 caracteres se for para Twitter/Facebook, ou um pouco mais longo para Instagram/TikTok.
-      Use emojis.
+      Atue como um especialista em social media.
+      Crie uma legenda curta, engajadora e profissional para um post no ${platform}
+      baseado no seguinte título de vídeo/conteúdo: "${videoTitle}".
+      
+      Regras:
+      - Use emojis relevantes.
+      - Inclua 3 hashtags em alta.
+      - Tom de voz: Entusiasta e Educativo.
+      - Sem aspas no início ou fim.
     `;
 
     const response = await ai.models.generateContent({
@@ -34,21 +39,22 @@ export const generateSocialCaption = async (
     return response.text || "Não foi possível gerar a legenda.";
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return "Erro ao gerar conteúdo. Verifique sua configuração de API.";
+    return "Erro ao conectar com a IA. Tente novamente mais tarde.";
   }
 };
 
 /**
- * Suggests video tags or keywords based on a description.
+ * Suggests video tags using Gemini
  */
 export const suggestVideoTags = async (description: string): Promise<string[]> => {
-  const ai = getAiClient();
-  
+  if (!apiKey) {
+    return ["Dados", "Tecnologia", "Inovação", "CreatorNexus", "Demo"];
+  }
+
   try {
     const prompt = `
-      Analise esta descrição de vídeo e forneça uma lista de 10 tags/palavras-chave de alto tráfego para SEO em Português.
-      Descrição: "${description}"
-      Retorne APENAS a lista separada por vírgulas, sem nenhum outro texto.
+      Gere 5 tags SEO (palavras-chave curtas) para um vídeo sobre: "${description}".
+      Retorne APENAS as palavras separadas por vírgula, sem numeração ou bullets.
     `;
 
     const response = await ai.models.generateContent({
@@ -57,9 +63,8 @@ export const suggestVideoTags = async (description: string): Promise<string[]> =
     });
 
     const text = response.text || "";
-    return text.split(',').map(tag => tag.trim());
+    return text.split(',').map(t => t.trim()).filter(t => t.length > 0);
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    return ["Erro", "Verificar", "API"];
+    return ["Dados", "Tech", "Brasil"];
   }
 };

@@ -18,7 +18,8 @@ import {
   saveSettings,
   savePost,
   deletePostById,
-  bulkSavePosts
+  bulkSavePosts,
+  isAuthenticated
 } from './services/firebase';
 
 // --- DADOS PADRÃO (FALLBACK) ---
@@ -80,17 +81,23 @@ const App: React.FC = () => {
 
   // --- INICIALIZAÇÃO ---
   useEffect(() => {
-    const { app } = initFirebase();
-    setIsFirebaseReady(true);
+    initFirebase();
+    // Check if we have a token (Auto-Login logic)
+    if (isAuthenticated()) {
+      setIsLoggedIn(true);
+      setIsFirebaseReady(true);
+    } else {
+      setIsFirebaseReady(true);
+    }
   }, []);
 
-  // --- DATA SYNC (FIRESTORE) ---
+  // --- DATA SYNC (LOCAL STORAGE) ---
   useEffect(() => {
     if (!isFirebaseReady) return;
 
     // 1. Ouvir Configurações
     const unsubSettings = subscribeToSettings((data) => {
-      if (data.profile) setProfile(data.profile);
+      if (data.profile) setProfile(prev => ({ ...prev, ...data.profile }));
       if (data.landingContent) setLandingContent(data.landingContent);
       if (data.youtubeApiKey) setYoutubeApiKey(data.youtubeApiKey);
       setIsLoadingData(false);
@@ -110,17 +117,17 @@ const App: React.FC = () => {
   // --- SAVE ACTIONS WRAPPERS ---
   const handleSaveProfile = (newProfile: CreatorProfile) => {
     setProfile(newProfile); // Optimistic update
-    if(isFirebaseReady) saveSettings(newProfile, landingContent, youtubeApiKey);
+    saveSettings(newProfile, landingContent, youtubeApiKey);
   };
 
   const handleSaveLanding = (newContent: LandingPageContent) => {
     setLandingContent(newContent); // Optimistic
-    if(isFirebaseReady) saveSettings(profile, newContent, youtubeApiKey);
+    saveSettings(profile, newContent, youtubeApiKey);
   };
 
   const handleSaveApiKey = (key: string) => {
     setYoutubeApiKey(key); // Optimistic
-    if(isFirebaseReady) saveSettings(profile, landingContent, key);
+    saveSettings(profile, landingContent, key);
   };
 
   const handleUpdatePosts = (newPosts: SocialPost[]) => {
@@ -129,13 +136,18 @@ const App: React.FC = () => {
 
   const dbActions = {
     addPost: (post: SocialPost) => {
-      if(isFirebaseReady) savePost(post);
+      savePost(post);
+      // Optimistic add for smoother UI
+      setPosts(prev => [post, ...prev]);
     },
     deletePost: (id: string) => {
-      if(isFirebaseReady) deletePostById(id);
+      deletePostById(id);
+      // Optimistic delete
+      setPosts(prev => prev.filter(p => p.id !== id));
     },
     syncPosts: (posts: SocialPost[]) => {
-      if(isFirebaseReady) bulkSavePosts(posts);
+      bulkSavePosts(posts);
+      setPosts(prev => [...posts, ...prev]);
     }
   };
 
@@ -199,7 +211,6 @@ const App: React.FC = () => {
         // Start MFA Setup
         const { secret, otpauthUrl } = await initiateMfaSetup();
         setMfaSecret(secret);
-        // Generate QR Code Image URL using a public API
         setMfaQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(otpauthUrl)}`);
         setLoginStep('mfa-setup');
       }
@@ -241,7 +252,7 @@ const App: React.FC = () => {
     try {
       const isValid = await verifyMfaToken(mfaCode, mfaSecret);
       if (isValid) {
-        completeMfaSetup(mfaSecret);
+        await completeMfaSetup(mfaSecret);
         setIsLoggedIn(true);
         setCurrentView('admin');
         setIsLoginModalOpen(false);
@@ -429,9 +440,6 @@ const App: React.FC = () => {
                     onChange={(e) => {
                       const val = e.target.value.replace(/\D/g, '').slice(0, 6);
                       setMfaCode(val);
-                      if (val.length === 6 && !isAuthenticating) {
-                        // Optional: Auto submit could go here, but button is safer
-                      }
                     }}
                     placeholder="000000"
                     autoFocus
