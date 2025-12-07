@@ -26,7 +26,7 @@ import {
 const INITIAL_PROFILE: CreatorProfile = {
   name: "Mundo dos Dados BR",
   handle: "@mundodosdadosbr",
-  avatarUrl: "https://ui-avatars.com/api/?name=Mundo+Dados&background=0f172a&color=38bdf8&size=256",
+  avatarUrl: "images/logo.png", // Use the local logo as default avatar
   faviconUrl: "images/logo.png", 
   subscribers: "0",
   bio: "Aqui, mergulhamos no fascinante universo dos dados, abrindo portas para entusiastas, iniciantes e profissionais.",

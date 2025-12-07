@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   Youtube, 
@@ -78,15 +79,15 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       {/* HEADER */}
-      <header className="sticky top-0 z-40 w-full bg-slate-900/80 backdrop-blur-md border-b border-slate-800">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 p-[2px]">
-              <img src={profile.avatarUrl} alt="Perfil" className="w-full h-full rounded-full border-2 border-slate-900" />
+      <header className="sticky top-0 z-40 w-full bg-slate-900/80 backdrop-blur-md border-b border-slate-800 transition-all">
+        <div className="container mx-auto px-4 h-20 md:h-28 flex items-center justify-between">
+          <div className="flex items-center space-x-4 md:space-x-6">
+            <div className="w-14 h-14 md:w-24 md:h-24 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 p-[2px] shadow-lg shadow-indigo-500/20">
+              <img src={profile.avatarUrl} alt="Perfil" className="w-full h-full rounded-full border-2 border-slate-900 object-cover" />
             </div>
-            <div>
-              <h1 className="text-lg font-bold leading-none">{profile.name}</h1>
-              <p className="text-xs text-slate-400">{profile.handle}</p>
+            <div className="flex flex-col justify-center">
+              <h1 className="text-xl md:text-3xl font-bold leading-tight">{profile.name}</h1>
+              <p className="text-sm md:text-base text-slate-400">{profile.handle}</p>
             </div>
           </div>
 
@@ -120,7 +121,7 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
 
         {/* Mobile Nav Dropdown */}
         {isMobileMenuOpen && (
-          <div className="md:hidden absolute top-16 left-0 right-0 bg-slate-900 border-b border-slate-800 p-4 space-y-2 animate-fade-in shadow-xl">
+          <div className="md:hidden absolute top-20 left-0 right-0 bg-slate-900 border-b border-slate-800 p-4 space-y-2 animate-fade-in shadow-xl z-50">
             <NavButton label="Todos" icon={TrendingUp} tab="All" />
             <NavButton label="YouTube" icon={Youtube} tab={Platform.YOUTUBE} />
             <NavButton label="Instagram" icon={Instagram} tab={Platform.INSTAGRAM} />
