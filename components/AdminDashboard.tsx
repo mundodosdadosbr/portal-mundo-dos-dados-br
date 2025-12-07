@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Platform, 
   SocialPost,
@@ -8,7 +8,7 @@ import {
 } from '../types';
 import { getYouTubePosts } from '../services/youtubeService';
 import { getTikTokPosts, getTikTokAuthUrl, DEFAULT_CLIENT_KEY, DEFAULT_CLIENT_SECRET, getRedirectUri } from '../services/tiktokService';
-import { TikTokAuthData } from '../services/firebase';
+import { TikTokAuthData, getVirtualFiles, saveVirtualFile, deleteVirtualFile, VirtualFile } from '../services/firebase';
 import { 
   Trash2, 
   Plus, 
@@ -28,7 +28,9 @@ import {
   Video,
   Users,
   AlertTriangle,
-  Lock
+  Lock,
+  FileText,
+  UploadCloud
 } from './Icons';
 
 interface AdminDashboardProps {
@@ -52,7 +54,7 @@ interface AdminDashboardProps {
   setTiktokAuth: (data: Partial<TikTokAuthData>) => void;
 }
 
-type AdminView = 'content' | 'integrations' | 'pages' | 'profile' | 'analytics';
+type AdminView = 'content' | 'integrations' | 'pages' | 'profile' | 'files';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   posts, 
@@ -73,7 +75,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   
-  // OAuth Simulation State (For Other Platforms)
+  // File System State
+  const [virtualFiles, setVirtualFiles] = useState<VirtualFile[]>([]);
+  const [newFile, setNewFile] = useState({ path: '', content: '' });
+  
+  // OAuth Simulation State
   const [oauthModalOpen, setOauthModalOpen] = useState(false);
   const [oauthPlatform, setOauthPlatform] = useState<Platform | null>(null);
   const [oauthLoading, setOauthLoading] = useState(false);
@@ -94,6 +100,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     comments: 0,
     views: 0
   });
+
+  useEffect(() => {
+    if (activeView === 'files') {
+      setVirtualFiles(getVirtualFiles());
+    }
+  }, [activeView]);
 
   const handleDelete = (id: string) => {
     if (confirm('Tem certeza que deseja excluir esta postagem?')) {
@@ -119,11 +131,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsSyncing(true);
     
     try {
-      // 1. YouTube Service
       const realYoutubePosts = await getYouTubePosts('@MundodosDadosBR', 10, youtubeApiKey);
       
-      // 2. TikTok Service (OAuth Flow)
-      // Pass stored keys. If token is expired, the service will try to refresh using the refresh token and client secrets.
       const tiktokPosts = await getTikTokPosts(
         '@mundo.dos.dados5', 
         tiktokAuth.accessToken,
@@ -132,7 +141,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
         tiktokAuth.expiresAt,
         (newAccess, newRefresh, newExpiry) => {
-           // Callback to save new tokens if they were refreshed during fetch
            setTiktokAuth({
              accessToken: newAccess,
              refreshToken: newRefresh,
@@ -141,7 +149,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       );
 
-      // 3. NO MOCK for other platforms (As requested by user)
       const combinedPosts = [...realYoutubePosts, ...tiktokPosts];
       
       if (dbActions) {
@@ -164,14 +171,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleConnectTikTok = () => {
-     // Use stored keys or defaults
      const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
      if (!key) {
        alert("Por favor, insira o Client Key.");
        return;
      }
      
-     // Save current input state before redirecting, just in case
      setTiktokAuth({ 
        clientKey: key, 
        clientSecret: tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET 
@@ -235,6 +240,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
+  const handleSaveFile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFile.path || !newFile.content) return;
+    
+    saveVirtualFile({ ...newFile, type: 'text/plain' });
+    setVirtualFiles(getVirtualFiles());
+    setNewFile({ path: '', content: '' });
+  };
+
+  const handleDeleteFile = (path: string) => {
+    deleteVirtualFile(path);
+    setVirtualFiles(getVirtualFiles());
+  };
+
   const isTikTokConnected = !!tiktokAuth.accessToken;
 
   return (
@@ -259,6 +278,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
              <Link2 size={18} />
              <span>Integrações</span>
+          </button>
+
+          <button 
+            onClick={() => setActiveView('files')}
+            className={`w-full px-4 py-2 flex items-center space-x-3 rounded-lg transition-colors ${activeView === 'files' ? 'bg-indigo-600/20 text-indigo-300' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+          >
+             <FileText size={18} />
+             <span>Arquivos & DNS</span>
           </button>
 
           <button 
@@ -301,7 +328,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Main Content */}
       <main className="flex-grow flex flex-col h-screen overflow-hidden">
         
-        {/* Header Content View */}
+        {/* HEADER VIEWS */}
         {activeView === 'content' && (
           <>
             <header className="h-16 bg-slate-900/50 backdrop-blur border-b border-slate-800 flex items-center justify-between px-6">
@@ -402,6 +429,103 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </tbody>
                 </table>
               </div>
+            </div>
+          </>
+        )}
+        
+        {/* FILE MANAGER VIEW */}
+        {activeView === 'files' && (
+          <>
+            <header className="h-16 bg-slate-900/50 backdrop-blur border-b border-slate-800 flex items-center justify-between px-6">
+              <h1 className="text-xl font-semibold">Arquivos de Verificação e DNS</h1>
+              <p className="text-xs text-slate-400">
+                Use esta área para hospedar arquivos como ads.txt, robots.txt ou verificações do Google.
+              </p>
+            </header>
+            <div className="flex-grow overflow-y-auto p-6">
+               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Create New File */}
+                  <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-6 h-fit">
+                     <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+                       <UploadCloud size={20} className="text-indigo-400" />
+                       Adicionar Arquivo
+                     </h3>
+                     <form onSubmit={handleSaveFile} className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400 mb-1">Nome do Arquivo (Caminho)</label>
+                          <input 
+                            type="text" 
+                            value={newFile.path}
+                            onChange={(e) => setNewFile({...newFile, path: e.target.value})}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                            placeholder="ex: ads.txt ou google123.html"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400 mb-1">Conteúdo (Texto Puro)</label>
+                          <textarea 
+                            rows={8}
+                            value={newFile.content}
+                            onChange={(e) => setNewFile({...newFile, content: e.target.value})}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none font-mono text-xs"
+                            placeholder="Cole o conteúdo do arquivo aqui..."
+                            required
+                          />
+                        </div>
+                        <button 
+                          type="submit"
+                          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg flex items-center justify-center space-x-2"
+                        >
+                          <Plus size={18} />
+                          <span>Salvar Arquivo Virtual</span>
+                        </button>
+                     </form>
+                  </div>
+
+                  {/* List Files */}
+                  <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden h-fit">
+                    <div className="p-4 border-b border-slate-800 bg-slate-800/30">
+                       <h3 className="font-bold text-white">Arquivos Hospedados</h3>
+                    </div>
+                    {virtualFiles.length === 0 ? (
+                      <div className="p-8 text-center text-slate-500">
+                         <FileText size={32} className="mx-auto mb-2 opacity-50" />
+                         <p>Nenhum arquivo virtual criado.</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-800">
+                         {virtualFiles.map((file, idx) => (
+                           <div key={idx} className="p-4 flex items-start justify-between hover:bg-slate-800/30 transition-colors">
+                              <div className="overflow-hidden mr-4">
+                                 <div className="flex items-center gap-2 mb-1">
+                                    <FileText size={16} className="text-indigo-400 shrink-0" />
+                                    <span className="font-mono font-bold text-white truncate">/{file.path}</span>
+                                 </div>
+                                 <p className="text-xs text-slate-500 truncate font-mono bg-slate-950 p-1 rounded">
+                                   {file.content.substring(0, 60)}...
+                                 </p>
+                                 <a 
+                                   href={`/${file.path}`} 
+                                   target="_blank" 
+                                   rel="noopener noreferrer"
+                                   className="text-xs text-emerald-400 hover:underline mt-2 inline-block"
+                                 >
+                                   Abrir Link: {window.location.origin}/{file.path}
+                                 </a>
+                              </div>
+                              <button 
+                                onClick={() => handleDeleteFile(file.path)}
+                                className="text-slate-500 hover:text-red-400 p-2"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                           </div>
+                         ))}
+                      </div>
+                    )}
+                  </div>
+               </div>
             </div>
           </>
         )}

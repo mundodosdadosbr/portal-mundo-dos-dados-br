@@ -21,7 +21,8 @@ import {
   bulkSavePosts,
   clearAllPosts,
   isAuthenticated,
-  TikTokAuthData
+  TikTokAuthData,
+  getVirtualFileContent
 } from './services/firebase';
 import { exchangeTikTokCode } from './services/tiktokService';
 
@@ -51,7 +52,51 @@ const INITIAL_LANDING_CONTENT: LandingPageContent = {
 type ViewState = 'landing' | 'portal' | 'admin';
 type LoginStep = 'credentials' | 'mfa-setup' | 'mfa-verify';
 
+// --- VIRTUAL FILE RENDERER (RAW TEXT) ---
+// This component is used to hijack the render and show plain text for verification files
+const RawTextRenderer = ({ content }: { content: string }) => {
+  return (
+    <pre style={{ 
+      wordWrap: 'break-word', 
+      whiteSpace: 'pre-wrap', 
+      fontFamily: 'monospace',
+      padding: '20px',
+      margin: 0,
+      backgroundColor: 'white',
+      color: 'black',
+      height: '100vh',
+      overflow: 'auto'
+    }}>
+      {content}
+    </pre>
+  );
+};
+
 const App: React.FC = () => {
+  // 1. URL INTERCEPTION FOR VIRTUAL FILES
+  // Check if current URL matches a saved virtual file (e.g. /ads.txt)
+  const [virtualFileContent, setVirtualFileContent] = useState<string | null>(null);
+  
+  useEffect(() => {
+    // Get path without leading slash
+    const path = window.location.pathname.substring(1);
+    if (path) {
+      const content = getVirtualFileContent(path);
+      if (content) {
+        setVirtualFileContent(content);
+        // Important: Stop react from messing with the title/meta for this view
+        document.title = path; 
+      }
+    }
+  }, []);
+
+  // If we found a virtual file, render IT ONLY and exit normal app flow
+  if (virtualFileContent !== null) {
+    return <RawTextRenderer content={virtualFileContent} />;
+  }
+
+  // --- NORMAL APP FLOW ---
+  
   const [currentView, setCurrentView] = useState<ViewState>('landing');
   
   // Data State
@@ -96,24 +141,12 @@ const App: React.FC = () => {
     const handleAuthCallback = async () => {
       const urlParams = new URLSearchParams(window.location.search);
       const code = urlParams.get('code');
-      const state = urlParams.get('state');
-
-      // If we have a code, we are returning from TikTok
+      // If code exists, it's NOT a virtual file request, it's OAuth
       if (code) {
         console.log("TikTok Authorization Code detected:", code);
         setIsLoadingData(true);
-        
-        // Ensure we are logged in or in a state to accept this
-        // For simplicity, we process it. In production, check state for CSRF.
-        
         try {
-          // We need the keys to exchange. Since state might not be fully loaded, 
-          // we assume the user just clicked connect and keys are in localStorage or state.
-          // However, on a redirect, React state resets. We must pull from storage.
-          // But since initFirebase handles storage, we wait for it? 
-          // Actually, let's grab directly from local storage for the exchange to be safe.
-          
-          const storedKey = localStorage.getItem('nexus_tt_client_key') || 'aw4f52prfxu4yqzx'; // Fallback to provided default
+          const storedKey = localStorage.getItem('nexus_tt_client_key') || 'aw4f52prfxu4yqzx'; 
           const storedSecret = localStorage.getItem('nexus_tt_client_secret') || 'ZoNVIyX4xracwFi08hwIwhMuFA3mwtPw';
 
           const tokens = await exchangeTikTokCode(code, storedKey, storedSecret);
@@ -124,15 +157,13 @@ const App: React.FC = () => {
             expiresAt: Date.now() + (tokens.expiresIn * 1000)
           };
 
-          // Save to storage
           saveSettings(profile, landingContent, { tiktokAuth: newAuthData });
           
-          // Clean URL
           window.history.replaceState({}, document.title, window.location.pathname);
           
           alert("TikTok conectado com sucesso!");
-          setCurrentView('admin'); // Go to admin to show success
-          setIsLoggedIn(true); // Assuming admin context if they were doing this
+          setCurrentView('admin'); 
+          setIsLoggedIn(true); 
           
         } catch (error) {
           console.error("Failed to exchange TikTok code:", error);
@@ -144,12 +175,11 @@ const App: React.FC = () => {
     };
 
     handleAuthCallback();
-  }, []); // Run once on mount
+  }, []); 
 
   // --- INICIALIZAÇÃO ---
   useEffect(() => {
     initFirebase();
-    // Check if we have a token (Auto-Login logic)
     if (isAuthenticated()) {
       setIsLoggedIn(true);
       setIsFirebaseReady(true);
@@ -158,17 +188,15 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // --- DATA SYNC (LOCAL STORAGE) ---
+  // --- DATA SYNC ---
   useEffect(() => {
     if (!isFirebaseReady) return;
 
-    // 1. Ouvir Configurações
     const unsubSettings = subscribeToSettings((data) => {
       if (data.profile) setProfile(prev => ({ ...prev, ...data.profile }));
       if (data.landingContent) setLandingContent(data.landingContent);
       if (data.keys) {
         setYoutubeApiKey(data.keys.youtube || '');
-        // Load TikTok Data
         if (data.keys.tiktokAuth) {
            setTiktokAuth(prev => ({ ...prev, ...data.keys.tiktokAuth }));
         }
@@ -176,7 +204,6 @@ const App: React.FC = () => {
       setIsLoadingData(false);
     }, () => {});
 
-    // 2. Ouvir Posts
     const unsubPosts = subscribeToPosts((newPosts) => {
       setPosts(newPosts);
     }, () => {});
@@ -189,17 +216,17 @@ const App: React.FC = () => {
 
   // --- SAVE ACTIONS WRAPPERS ---
   const handleSaveProfile = (newProfile: CreatorProfile) => {
-    setProfile(newProfile); // Optimistic update
+    setProfile(newProfile);
     saveSettings(newProfile, landingContent, { youtube: youtubeApiKey, tiktokAuth });
   };
 
   const handleSaveLanding = (newContent: LandingPageContent) => {
-    setLandingContent(newContent); // Optimistic
+    setLandingContent(newContent);
     saveSettings(profile, newContent, { youtube: youtubeApiKey, tiktokAuth });
   };
 
   const handleSaveYoutubeKey = (key: string) => {
-    setYoutubeApiKey(key); // Optimistic
+    setYoutubeApiKey(key);
     saveSettings(profile, landingContent, { youtube: key, tiktokAuth });
   };
 
@@ -216,12 +243,10 @@ const App: React.FC = () => {
   const dbActions = {
     addPost: (post: SocialPost) => {
       savePost(post);
-      // Optimistic add for smoother UI
       setPosts(prev => [post, ...prev]);
     },
     deletePost: (id: string) => {
       deletePostById(id);
-      // Optimistic delete
       setPosts(prev => prev.filter(p => p.id !== id));
     },
     syncPosts: (posts: SocialPost[]) => {
@@ -234,7 +259,6 @@ const App: React.FC = () => {
     }
   };
 
-  // --- FAVICON EFFECT ---
   useEffect(() => {
     if (profile.faviconUrl) {
       const existingLink = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
@@ -251,7 +275,6 @@ const App: React.FC = () => {
   }, [profile.faviconUrl, profile.name]);
 
 
-  // --- AUTH HANDLERS ---
   const handlePortalAccess = () => {
     setCurrentView('portal');
   };
@@ -282,16 +305,13 @@ const App: React.FC = () => {
     setLoginError('');
 
     try {
-      // 1. Validate User/Pass
       await loginWithCredentials(username, password);
       
-      // 2. Check MFA Status
       const hasMfa = await checkMfaStatus();
       
       if (hasMfa) {
         setLoginStep('mfa-verify');
       } else {
-        // Start MFA Setup
         const { secret, otpauthUrl } = await initiateMfaSetup();
         setMfaSecret(secret);
         setMfaQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(otpauthUrl)}`);
@@ -458,7 +478,7 @@ const App: React.FC = () => {
               </form>
             )}
 
-            {/* STEP 2: MFA SETUP (FIRST TIME) */}
+            {/* STEP 2: MFA SETUP */}
             {loginStep === 'mfa-setup' && (
               <div className="animate-fade-in">
                 <div className="text-center mb-4">
@@ -504,7 +524,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {/* STEP 3: MFA VERIFY (RETURNING) */}
+            {/* STEP 3: MFA VERIFY */}
             {loginStep === 'mfa-verify' && (
               <div className="animate-fade-in">
                 <div className="text-center mb-6">

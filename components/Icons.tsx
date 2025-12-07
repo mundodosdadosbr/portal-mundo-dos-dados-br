@@ -30,7 +30,9 @@ import {
   QrCode,
   AlertTriangle,
   Mail,
-  Github
+  Github,
+  FileText,
+  UploadCloud
 } from 'lucide-react';
 
 export { 
@@ -63,7 +65,9 @@ export {
   QrCode,
   AlertTriangle,
   Mail,
-  Github
+  Github,
+  FileText,
+  UploadCloud
 };
 
 // Custom TikTok icon component

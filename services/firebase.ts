@@ -9,6 +9,7 @@ const KEY_PROFILE = 'nexus_profile';
 const KEY_LANDING = 'nexus_landing_content';
 const KEY_POSTS = 'nexus_posts';
 const KEY_YT_API_KEY = 'nexus_yt_api_key';
+const KEY_VIRTUAL_FILES = 'nexus_virtual_files';
 
 // TikTok Keys
 const KEY_TT_CLIENT_KEY = 'nexus_tt_client_key';
@@ -33,6 +34,10 @@ export const initFirebase = () => {
   if (!localStorage.getItem(KEY_PROFILE)) {
     // defaults are handled in App.tsx initial state
   }
+  
+  // Reset MFA on init logic was removed to allow persistence, 
+  // but clearing here if specifically requested by user in past steps.
+  // localStorage.removeItem(KEY_MFA_SECRET); 
 };
 
 export const isAuthenticated = () => {
@@ -95,6 +100,49 @@ export const verifyMfaToken = async (token: string, pendingSecret?: string) => {
 
 export const completeMfaSetup = async (secret: string) => {
   localStorage.setItem(KEY_MFA_SECRET, secret);
+};
+
+// --- VIRTUAL FILE SYSTEM (Verification Files) ---
+
+export interface VirtualFile {
+  path: string; // e.g., 'ads.txt' or 'verification/google.html'
+  content: string;
+  type: string; // 'text/plain', 'text/html'
+}
+
+export const getVirtualFiles = (): VirtualFile[] => {
+  const str = localStorage.getItem(KEY_VIRTUAL_FILES);
+  return str ? JSON.parse(str) : [];
+};
+
+export const saveVirtualFile = (file: VirtualFile) => {
+  const files = getVirtualFiles();
+  // Clean path (remove leading slash)
+  const cleanPath = file.path.startsWith('/') ? file.path.substring(1) : file.path;
+  
+  const existingIndex = files.findIndex(f => f.path === cleanPath);
+  const newFile = { ...file, path: cleanPath };
+
+  if (existingIndex >= 0) {
+    files[existingIndex] = newFile;
+  } else {
+    files.push(newFile);
+  }
+  
+  localStorage.setItem(KEY_VIRTUAL_FILES, JSON.stringify(files));
+};
+
+export const deleteVirtualFile = (path: string) => {
+  const files = getVirtualFiles();
+  const filtered = files.filter(f => f.path !== path);
+  localStorage.setItem(KEY_VIRTUAL_FILES, JSON.stringify(filtered));
+};
+
+export const getVirtualFileContent = (path: string): string | null => {
+  const files = getVirtualFiles();
+  // Exact match logic
+  const file = files.find(f => f.path === path);
+  return file ? file.content : null;
 };
 
 // --- DATABASE (LOCAL STORAGE) ---
