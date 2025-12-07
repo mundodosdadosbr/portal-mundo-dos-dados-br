@@ -17,7 +17,7 @@ export const getYouTubePosts = async (
   try {
     let channelId = channelIdentifier;
 
-    // Se não for um ID de canal (que começa com UC), busca o ID pelo Handle/Nome
+    // 1. Se não for um ID de canal (que começa com UC), busca o ID pelo Handle/Nome
     if (!channelIdentifier.startsWith('UC')) {
       const channelSearchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(channelIdentifier)}&maxResults=1&key=${apiKey}`;
       
@@ -33,7 +33,7 @@ export const getYouTubePosts = async (
       channelId = channelData.items[0].id.channelId;
     }
 
-    // 2. Busca vídeos especificamente deste Channel ID
+    // 2. Busca vídeos deste Channel ID
     const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&maxResults=${maxResults}&key=${apiKey}`;
     
     const response = await fetch(searchUrl);
@@ -43,19 +43,43 @@ export const getYouTubePosts = async (
 
     const data = await response.json();
     
-    // Map to SocialPost
-    return data.items.map((item: any) => ({
-      id: item.id.videoId,
-      platform: Platform.YOUTUBE,
-      title: item.snippet.title,
-      caption: item.snippet.description,
-      thumbnailUrl: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
-      date: item.snippet.publishedAt,
-      url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-      likes: 0, // A API de busca não retorna stats, precisaria de uma chamada extra (videos?id=...)
-      comments: 0,
-      views: 0
-    }));
+    if (!data.items || data.items.length === 0) {
+      return [];
+    }
+
+    // 3. Extrair IDs dos vídeos para buscar estatísticas (Views, Likes, Comentários)
+    const videoIds = data.items.map((item: any) => item.id.videoId).join(',');
+    const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${videoIds}&key=${apiKey}`;
+    
+    const statsResp = await fetch(statsUrl);
+    const statsData = await statsResp.json();
+
+    // Criar um mapa de ID -> Estatísticas para acesso rápido
+    const statsMap: Record<string, any> = {};
+    if (statsData.items) {
+      statsData.items.forEach((item: any) => {
+        statsMap[item.id] = item.statistics;
+      });
+    }
+
+    // 4. Mapear para o objeto SocialPost combinando Snippet + Statistics
+    return data.items.map((item: any) => {
+      const videoId = item.id.videoId;
+      const stats = statsMap[videoId] || {};
+
+      return {
+        id: videoId,
+        platform: Platform.YOUTUBE,
+        title: item.snippet.title,
+        caption: item.snippet.description,
+        thumbnailUrl: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
+        date: item.snippet.publishedAt,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        likes: parseInt(stats.likeCount) || 0,
+        comments: parseInt(stats.commentCount) || 0,
+        views: parseInt(stats.viewCount) || 0
+      };
+    });
 
   } catch (error) {
     console.error("YouTube Service Error:", error);
@@ -73,7 +97,7 @@ const mockYouTubeData = (): SocialPost[] => {
     caption: "Vídeo exclusivo do canal Mundo dos Dados BR sobre tendências de tecnologia.",
     thumbnailUrl: `https://picsum.photos/seed/mdbr${i}/400/225`,
     date: new Date().toISOString(),
-    url: '#',
+    url: 'https://www.youtube.com/@MundodosDadosBR',
     likes: 120 + i * 10,
     comments: 5 + i,
     views: 1000 + i * 50
