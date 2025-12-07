@@ -27,7 +27,7 @@ const INITIAL_PROFILE: CreatorProfile = {
   name: "Mundo dos Dados BR",
   handle: "@mundodosdadosbr",
   avatarUrl: "https://ui-avatars.com/api/?name=Mundo+Dados&background=0f172a&color=38bdf8&size=256",
-  faviconUrl: "https://cdn-icons-png.flaticon.com/512/2906/2906274.png", 
+  faviconUrl: "images/logo.png", 
   subscribers: "0",
   bio: "Aqui, mergulhamos no fascinante universo dos dados, abrindo portas para entusiastas, iniciantes e profissionais.",
 };
@@ -36,7 +36,7 @@ const INITIAL_LANDING_CONTENT: LandingPageContent = {
   headline: "Mundo dos Dados BR",
   subheadline: "Nosso canal é o guia perfeito para quem busca compreender e aplicar o poder dos dados.",
   ctaButtonText: "Explorar Dados",
-  logoUrl: "",
+  logoUrl: "images/logo.png",
   feature1Title: "Análise de Negócios",
   feature1Desc: "Conteúdo essencial sobre Business Intelligence.",
   feature2Title: "Ciência de Dados",
