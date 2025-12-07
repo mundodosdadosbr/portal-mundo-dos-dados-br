@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Platform, 
@@ -114,7 +113,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // 2. TikTok Service (OAuth Flow)
       // Pass stored keys. If token is expired, the service will try to refresh using the refresh token and client secrets.
       const tiktokPosts = await getTikTokPosts(
-        '@MundodosDadosBR', 
+        '@mundo.dos.dados5', 
         tiktokAuth.accessToken,
         tiktokAuth.refreshToken,
         tiktokAuth.clientKey || DEFAULT_CLIENT_KEY,

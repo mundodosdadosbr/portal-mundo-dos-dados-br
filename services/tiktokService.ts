@@ -1,4 +1,3 @@
-
 import { SocialPost, Platform } from '../types';
 
 // Default Credentials (from user input)
@@ -109,7 +108,7 @@ export const refreshTikTokToken = async (refreshToken: string, clientKey: string
  * 4. Fetch Posts (Main Logic)
  */
 export const getTikTokPosts = async (
-  username: string = 'mundodosdadosbr', 
+  username: string = 'mundo.dos.dados5', 
   accessToken?: string,
   refreshToken?: string,
   clientKey?: string,
