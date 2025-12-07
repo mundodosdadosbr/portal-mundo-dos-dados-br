@@ -1,31 +1,158 @@
 
 import { SocialPost, Platform } from '../types';
 
+// Default Credentials (from user input)
+// WARNING: In production, Client Secret should NEVER be in frontend code.
+// This is for local demonstration purposes only.
+export const DEFAULT_CLIENT_KEY = 'aw4f52prfxu4yqzx';
+export const DEFAULT_CLIENT_SECRET = 'ZoNVIyX4xracwFi08hwIwhMuFA3mwtPw';
+const REDIRECT_URI = window.location.origin; // e.g. http://localhost:3000
+
 /**
- * Fetches TikTok posts.
- * 
- * If an accessToken is provided, it attempts to fetch from the official TikTok Display API.
- * If no token is provided or the fetch fails (e.g. CORS), it returns realistic mock data.
- * 
- * API: https://developers.tiktok.com/doc/overview
+ * 1. Generates the TikTok Login URL
+ */
+export const getTikTokAuthUrl = (clientKey: string) => {
+  const csrfState = Math.random().toString(36).substring(7);
+  // Scopes: user.info.basic (for name/avatar), video.list (for fetching videos)
+  const scope = 'user.info.basic,video.list';
+  
+  let url = 'https://www.tiktok.com/v2/auth/authorize/';
+  url += `?client_key=${clientKey}`;
+  url += `&scope=${scope}`;
+  url += `&response_type=code`;
+  url += `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+  url += `&state=${csrfState}`;
+  
+  return url;
+};
+
+/**
+ * 2. Exchange Authorization Code for Access Token
+ * NOTE: This usually requires a backend due to CORS. 
+ * If running on localhost, you might need a CORS extension or proxy.
+ */
+export const exchangeTikTokCode = async (code: string, clientKey: string, clientSecret: string) => {
+  const params = new URLSearchParams();
+  params.append('client_key', clientKey);
+  params.append('client_secret', clientSecret);
+  params.append('code', code);
+  params.append('grant_type', 'authorization_code');
+  params.append('redirect_uri', REDIRECT_URI);
+
+  try {
+    const response = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cache-Control': 'no-cache'
+      },
+      body: params
+    });
+
+    const data = await response.json();
+    
+    if (data.error) {
+      throw new Error(`TikTok Auth Error: ${data.error_description || data.error}`);
+    }
+
+    // Return structured data to save
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresIn: data.expires_in, // usually 86400 (24h)
+      refreshExpiresIn: data.refresh_expires_in
+    };
+
+  } catch (error) {
+    console.error("TikTok Token Exchange Failed:", error);
+    throw error;
+  }
+};
+
+/**
+ * 3. Refresh Access Token (Auto-Renew logic)
+ */
+export const refreshTikTokToken = async (refreshToken: string, clientKey: string, clientSecret: string) => {
+  const params = new URLSearchParams();
+  params.append('client_key', clientKey);
+  params.append('client_secret', clientSecret);
+  params.append('grant_type', 'refresh_token');
+  params.append('refresh_token', refreshToken);
+
+  try {
+    const response = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: params
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(`TikTok Refresh Error: ${data.error_description}`);
+    }
+
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token, // Sometimes it rotates
+      expiresIn: data.expires_in
+    };
+  } catch (error) {
+    console.error("TikTok Token Refresh Failed:", error);
+    throw error;
+  }
+};
+
+/**
+ * 4. Fetch Posts (Main Logic)
  */
 export const getTikTokPosts = async (
   username: string = 'mundodosdadosbr', 
-  accessToken?: string
+  accessToken?: string,
+  refreshToken?: string,
+  clientKey?: string,
+  clientSecret?: string,
+  tokenExpiresAt?: number,
+  onTokenRefresh?: (newToken: string, newRefresh: string, newExpiry: number) => void
 ): Promise<SocialPost[]> => {
   
-  // 1. Attempt Real API Call if Token exists
-  if (accessToken) {
+  let validAccessToken = accessToken;
+
+  // AUTO-RENEWAL CHECK
+  if (accessToken && refreshToken && clientKey && clientSecret && tokenExpiresAt) {
+    const now = Date.now();
+    // Refresh if expired or expiring in less than 5 minutes
+    if (now >= (tokenExpiresAt - 5 * 60 * 1000)) {
+       console.log("TikTok Token expired or expiring soon. Refreshing...");
+       try {
+         const refreshed = await refreshTikTokToken(refreshToken, clientKey, clientSecret);
+         validAccessToken = refreshed.accessToken;
+         const newExpiry = Date.now() + (refreshed.expiresIn * 1000);
+         
+         // Execute callback to save new keys to storage
+         if (onTokenRefresh) {
+           onTokenRefresh(refreshed.accessToken, refreshed.refreshToken, newExpiry);
+         }
+         console.log("TikTok Token Refreshed Successfully!");
+       } catch (err) {
+         console.error("Failed to auto-renew TikTok token:", err);
+         // Fallback to try using old token or mock
+       }
+    }
+  }
+
+  // ATTEMPT REAL API CALL
+  if (validAccessToken) {
     try {
-      // TikTok Display API v2 - Video List
-      // Note: This endpoint often requires the user 'open_id' or 'access_token' with scopes 'user.info.basic, video.list'
-      // We request specific fields to optimize the payload.
+      // API call to get video list
       const fields = "id,title,cover_image_url,like_count,comment_count,view_count,create_time,share_url";
       
       const response = await fetch(`https://open.tiktokapis.com/v2/video/list/?fields=${fields}`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'Authorization': `Bearer ${validAccessToken}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ 
@@ -44,7 +171,7 @@ export const getTikTokPosts = async (
           id: video.id,
           platform: Platform.TIKTOK,
           thumbnailUrl: video.cover_image_url,
-          caption: video.title || 'Sem legenda', // TikTok "title" is often the caption
+          caption: video.title || 'Sem legenda', 
           likes: video.like_count || 0,
           comments: video.comment_count || 0,
           views: video.view_count || 0,
@@ -55,59 +182,35 @@ export const getTikTokPosts = async (
 
     } catch (error) {
       console.warn("TikTok API call failed (using mock fallback):", error);
-      // Fallthrough to mock data below
     }
   }
 
-  // 2. Mock Fallback (Simulating network latency)
+  // MOCK FALLBACK
   await new Promise(resolve => setTimeout(resolve, 1500));
-
   const cleanUser = username.replace('@', '');
 
   return [
     {
       id: `tt-video-1`,
       platform: Platform.TIKTOK,
-      thumbnailUrl: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1000&auto=format&fit=crop', // Vertical tech vibe
+      thumbnailUrl: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1000&auto=format&fit=crop', 
       caption: "O poder do SQL em 15 segundos! 🚀 Nunca foi tão fácil aprender queries. #dados #sql #tech #programacao",
       likes: 15420,
       comments: 342,
       views: 85000,
-      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // 2 days ago
+      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), 
       url: `https://www.tiktok.com/@${cleanUser}/video/1`
     },
     {
       id: `tt-video-2`,
       platform: Platform.TIKTOK,
-      thumbnailUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=1000&auto=format&fit=crop', // Cyberpunk/Data vibe
+      thumbnailUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=1000&auto=format&fit=crop', 
       caption: "Python ou R? Qual você prefere para Data Science? 👇 Deixa nos comentários! #datascience #python #coding",
       likes: 8900,
       comments: 1250,
       views: 42100,
-      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(), // 5 days ago
+      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(), 
       url: `https://www.tiktok.com/@${cleanUser}/video/2`
-    },
-    {
-      id: `tt-video-3`,
-      platform: Platform.TIKTOK,
-      thumbnailUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=1000&auto=format&fit=crop', // Hardware/Chips
-      caption: "POV: Você descobriu que o Excel não é banco de dados 🤡 #humor #dev #ti #analisededados",
-      likes: 45200,
-      comments: 890,
-      views: 210500,
-      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(), // 1 week ago
-      url: `https://www.tiktok.com/@${cleanUser}/video/3`
-    },
-    {
-      id: `tt-video-4`,
-      platform: Platform.TIKTOK,
-      thumbnailUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?q=80&w=1000&auto=format&fit=crop', // Matrix code
-      caption: "Dica rápida de Power BI para impressionar o chefe na segunda-feira! 📊 #businessintelligence #powerbi #dica",
-      likes: 3200,
-      comments: 45,
-      views: 12300,
-      date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10).toISOString(), 
-      url: `https://www.tiktok.com/@${cleanUser}/video/4`
     }
   ];
 };

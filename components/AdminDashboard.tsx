@@ -7,7 +7,8 @@ import {
   CreatorProfile
 } from '../types';
 import { getYouTubePosts } from '../services/youtubeService';
-import { getTikTokPosts } from '../services/tiktokService';
+import { getTikTokPosts, getTikTokAuthUrl, DEFAULT_CLIENT_KEY, DEFAULT_CLIENT_SECRET } from '../services/tiktokService';
+import { TikTokAuthData } from '../services/firebase';
 import { 
   Trash2, 
   Plus, 
@@ -26,12 +27,13 @@ import {
   CloudLightning,
   Video,
   Users,
-  AlertTriangle
+  AlertTriangle,
+  Lock
 } from './Icons';
 
 interface AdminDashboardProps {
   posts: SocialPost[];
-  setPosts: any; // Tipagem relaxada pois injetamos a logica no App
+  setPosts: any; 
   dbActions?: {
     addPost: (p: SocialPost) => void;
     deletePost: (id: string) => void;
@@ -45,8 +47,8 @@ interface AdminDashboardProps {
   setProfile: (p: CreatorProfile) => void;
   youtubeApiKey: string;
   setYoutubeApiKey: (k: string) => void;
-  tiktokAccessToken: string;
-  setTiktokAccessToken: (t: string) => void;
+  tiktokAuth: TikTokAuthData;
+  setTiktokAuth: (data: Partial<TikTokAuthData>) => void;
 }
 
 type AdminView = 'content' | 'integrations' | 'pages' | 'profile' | 'analytics';
@@ -63,14 +65,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   setProfile,
   youtubeApiKey,
   setYoutubeApiKey,
-  tiktokAccessToken,
-  setTiktokAccessToken
+  tiktokAuth,
+  setTiktokAuth
 }) => {
   const [activeView, setActiveView] = useState<AdminView>('content');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   
-  // OAuth Simulation State
+  // OAuth Simulation State (For Other Platforms)
   const [oauthModalOpen, setOauthModalOpen] = useState(false);
   const [oauthPlatform, setOauthPlatform] = useState<Platform | null>(null);
   const [oauthLoading, setOauthLoading] = useState(false);
@@ -78,7 +80,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [connectedPlatforms, setConnectedPlatforms] = useState<Record<string, boolean>>({
     [Platform.YOUTUBE]: true,
     [Platform.INSTAGRAM]: false,
-    [Platform.TIKTOK]: true,
+    [Platform.TIKTOK]: false, // Dynamic check based on token
     [Platform.FACEBOOK]: false,
   });
 
@@ -97,7 +99,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (dbActions) {
         dbActions.deletePost(id);
       } else {
-        // Fallback local state
         setPosts(posts.filter(p => p.id !== id));
       }
     }
@@ -110,21 +111,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // 1. YouTube Service
       const realYoutubePosts = await getYouTubePosts('@MundodosDadosBR', 10, youtubeApiKey);
       
-      // 2. TikTok Service (Novo)
-      // Pass the stored Access Token to attempt real API fetch
-      const tiktokPosts = await getTikTokPosts('@MundodosDadosBR', tiktokAccessToken);
+      // 2. TikTok Service (OAuth Flow)
+      // Pass stored keys. If token is expired, the service will try to refresh using the refresh token and client secrets.
+      const tiktokPosts = await getTikTokPosts(
+        '@MundodosDadosBR', 
+        tiktokAuth.accessToken,
+        tiktokAuth.refreshToken,
+        tiktokAuth.clientKey || DEFAULT_CLIENT_KEY,
+        tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
+        tiktokAuth.expiresAt,
+        (newAccess, newRefresh, newExpiry) => {
+           // Callback to save new tokens if they were refreshed during fetch
+           setTiktokAuth({
+             accessToken: newAccess,
+             refreshToken: newRefresh,
+             expiresAt: newExpiry
+           });
+        }
+      );
 
-      // 3. Mock para outras plataformas (Instagram/Facebook)
+      // 3. Mock para outras plataformas
       const otherPlatformsMock = generateMockPostsForOtherPlatforms();
       
       const combinedPosts = [...realYoutubePosts, ...tiktokPosts, ...otherPlatformsMock];
       
       if (dbActions) {
-        // Salva no Firestore
         dbActions.syncPosts(combinedPosts);
         alert(`Sincronização concluída!\n\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nOutros: ${otherPlatformsMock.length}`);
       } else {
-        // Local only fallback
         setPosts((prev: any) => {
           const newItems = [...combinedPosts];
           return [...newItems, ...prev];
@@ -165,6 +179,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
   };
 
+  const handleConnectTikTok = () => {
+     // Use stored keys or defaults
+     const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
+     if (!key) {
+       alert("Por favor, insira o Client Key.");
+       return;
+     }
+     
+     // Save current input state before redirecting, just in case
+     setTiktokAuth({ 
+       clientKey: key, 
+       clientSecret: tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET 
+     });
+
+     window.location.href = getTikTokAuthUrl(key);
+  };
+
   const handleConnectPlatform = (platform: Platform) => {
     setOauthPlatform(platform);
     setOauthModalOpen(true);
@@ -186,6 +217,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleDisconnect = (platform: Platform) => {
     if (confirm(`Desconectar conta do ${platform}?`)) {
       setConnectedPlatforms(prev => ({ ...prev, [platform]: false }));
+      if (platform === Platform.TIKTOK) {
+        setTiktokAuth({ accessToken: '', refreshToken: '', expiresAt: 0 });
+      }
     }
   };
 
@@ -216,6 +250,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       views: 0
     });
   };
+
+  const isTikTokConnected = !!tiktokAuth.accessToken;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex">
@@ -628,7 +664,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
 
                   {/* TikTok */}
-                  <div className={`p-6 rounded-xl border transition-all bg-slate-900 border-emerald-500/30`}>
+                  <div className={`p-6 rounded-xl border transition-all ${isTikTokConnected ? 'bg-slate-900 border-emerald-500/30' : 'bg-slate-900 border-slate-800'}`}>
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 bg-teal-400 rounded-full flex items-center justify-center text-black">
@@ -636,26 +672,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                         <div>
                           <h4 className="font-bold">TikTok</h4>
-                          <p className="text-xs text-slate-500">Display API v2</p>
+                          <p className="text-xs text-slate-500">OAuth 2.0 (Video List)</p>
                         </div>
                       </div>
-                      <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                        <CheckCircle size={12} /> Ativo
-                      </span>
+                      {isTikTokConnected ? (
+                         <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                           <CheckCircle size={12} /> Conectado
+                         </span>
+                      ) : (
+                        <span className="bg-slate-700 text-slate-400 text-xs px-2 py-1 rounded-full">
+                           Não Conectado
+                         </span>
+                      )}
                     </div>
                     
-                    <div className="mt-4 space-y-2">
-                       <label className="text-xs text-slate-400">Access Token do TikTok</label>
-                       <input 
-                         type="password" 
-                         value={tiktokAccessToken}
-                         onChange={(e) => setTiktokAccessToken(e.target.value)}
-                         placeholder="Cole seu Access Token aqui"
-                         className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
-                       />
-                       <p className="text-[10px] text-slate-500">
-                         Necessário para buscar vídeos reais. Se vazio, usará dados de demonstração.
-                       </p>
+                    <div className="mt-4 space-y-3">
+                       <div>
+                         <label className="text-xs text-slate-400">Client Key</label>
+                         <input 
+                           type="text" 
+                           value={tiktokAuth.clientKey || DEFAULT_CLIENT_KEY}
+                           onChange={(e) => setTiktokAuth({ ...tiktokAuth, clientKey: e.target.value })}
+                           placeholder="Client Key"
+                           className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none mb-2"
+                         />
+                       </div>
+                       <div>
+                          <label className="text-xs text-slate-400 flex items-center gap-1">Client Secret <Lock size={10} /></label>
+                          <input 
+                            type="password" 
+                            value={tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET}
+                            onChange={(e) => setTiktokAuth({ ...tiktokAuth, clientSecret: e.target.value })}
+                            placeholder="Client Secret"
+                            className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+                          />
+                       </div>
+                       
+                       <button 
+                        onClick={() => isTikTokConnected ? handleDisconnect(Platform.TIKTOK) : handleConnectTikTok()}
+                        className={`w-full py-2 rounded-lg text-sm font-medium transition-colors border mt-2 ${isTikTokConnected ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-teal-500 hover:bg-teal-400 text-slate-900 border-teal-500'}`}
+                      >
+                        {isTikTokConnected ? 'Desconectar TikTok' : 'Autorizar e Conectar'}
+                      </button>
                     </div>
                   </div>
 

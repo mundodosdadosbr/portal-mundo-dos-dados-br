@@ -9,7 +9,13 @@ const KEY_PROFILE = 'nexus_profile';
 const KEY_LANDING = 'nexus_landing_content';
 const KEY_POSTS = 'nexus_posts';
 const KEY_YT_API_KEY = 'nexus_yt_api_key';
+
+// TikTok Keys
+const KEY_TT_CLIENT_KEY = 'nexus_tt_client_key';
+const KEY_TT_CLIENT_SECRET = 'nexus_tt_client_secret';
 const KEY_TT_ACCESS_TOKEN = 'nexus_tt_access_token';
+const KEY_TT_REFRESH_TOKEN = 'nexus_tt_refresh_token';
+const KEY_TT_EXPIRES_AT = 'nexus_tt_expires_at';
 
 // --- AUTHENTICATION (LOCAL / MOCK) ---
 
@@ -93,16 +99,31 @@ export const completeMfaSetup = async (secret: string) => {
 
 // --- DATABASE (LOCAL STORAGE) ---
 
+export interface TikTokAuthData {
+  clientKey: string;
+  clientSecret: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
 export const saveSettings = async (
   profile: CreatorProfile, 
   landingContent: LandingPageContent, 
-  keys: { youtube?: string, tiktok?: string }
+  keys: { youtube?: string, tiktokAuth?: Partial<TikTokAuthData> }
 ) => {
   localStorage.setItem(KEY_PROFILE, JSON.stringify(profile));
   localStorage.setItem(KEY_LANDING, JSON.stringify(landingContent));
   
   if (keys.youtube !== undefined) localStorage.setItem(KEY_YT_API_KEY, keys.youtube);
-  if (keys.tiktok !== undefined) localStorage.setItem(KEY_TT_ACCESS_TOKEN, keys.tiktok);
+  
+  if (keys.tiktokAuth) {
+    if (keys.tiktokAuth.clientKey !== undefined) localStorage.setItem(KEY_TT_CLIENT_KEY, keys.tiktokAuth.clientKey);
+    if (keys.tiktokAuth.clientSecret !== undefined) localStorage.setItem(KEY_TT_CLIENT_SECRET, keys.tiktokAuth.clientSecret);
+    if (keys.tiktokAuth.accessToken !== undefined) localStorage.setItem(KEY_TT_ACCESS_TOKEN, keys.tiktokAuth.accessToken);
+    if (keys.tiktokAuth.refreshToken !== undefined) localStorage.setItem(KEY_TT_REFRESH_TOKEN, keys.tiktokAuth.refreshToken);
+    if (keys.tiktokAuth.expiresAt !== undefined) localStorage.setItem(KEY_TT_EXPIRES_AT, keys.tiktokAuth.expiresAt.toString());
+  }
   
   // Trigger local event to simulate subscription update
   window.dispatchEvent(new Event('nexus-storage-update'));
@@ -112,7 +133,7 @@ export const subscribeToSettings = (
   onUpdate: (data: { 
     profile?: CreatorProfile, 
     landingContent?: LandingPageContent, 
-    keys: { youtube: string, tiktok: string }
+    keys: { youtube: string, tiktokAuth: TikTokAuthData }
   }) => void,
   onError?: (error: any) => void
 ) => {
@@ -121,12 +142,27 @@ export const subscribeToSettings = (
     const profileStr = localStorage.getItem(KEY_PROFILE);
     const landingStr = localStorage.getItem(KEY_LANDING);
     const ytKey = localStorage.getItem(KEY_YT_API_KEY) || '';
+    
+    // TikTok Data
+    const ttKey = localStorage.getItem(KEY_TT_CLIENT_KEY) || '';
+    const ttSecret = localStorage.getItem(KEY_TT_CLIENT_SECRET) || '';
     const ttToken = localStorage.getItem(KEY_TT_ACCESS_TOKEN) || '';
+    const ttRefresh = localStorage.getItem(KEY_TT_REFRESH_TOKEN) || '';
+    const ttExpires = parseInt(localStorage.getItem(KEY_TT_EXPIRES_AT) || '0');
 
     onUpdate({
       profile: profileStr ? JSON.parse(profileStr) : undefined,
       landingContent: landingStr ? JSON.parse(landingStr) : undefined,
-      keys: { youtube: ytKey, tiktok: ttToken }
+      keys: { 
+        youtube: ytKey, 
+        tiktokAuth: {
+          clientKey: ttKey,
+          clientSecret: ttSecret,
+          accessToken: ttToken,
+          refreshToken: ttRefresh,
+          expiresAt: ttExpires
+        }
+      }
     });
   };
 

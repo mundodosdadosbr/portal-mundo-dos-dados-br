@@ -19,8 +19,10 @@ import {
   savePost,
   deletePostById,
   bulkSavePosts,
-  isAuthenticated
+  isAuthenticated,
+  TikTokAuthData
 } from './services/firebase';
+import { exchangeTikTokCode } from './services/tiktokService';
 
 // --- DADOS PADRÃO (FALLBACK) ---
 const INITIAL_PROFILE: CreatorProfile = {
@@ -56,7 +58,15 @@ const App: React.FC = () => {
   const [landingContent, setLandingContent] = useState<LandingPageContent>(INITIAL_LANDING_CONTENT);
   const [profile, setProfile] = useState<CreatorProfile>(INITIAL_PROFILE);
   const [youtubeApiKey, setYoutubeApiKey] = useState('');
-  const [tiktokAccessToken, setTiktokAccessToken] = useState('');
+  
+  // TikTok State
+  const [tiktokAuth, setTiktokAuth] = useState<TikTokAuthData>({
+    clientKey: '',
+    clientSecret: '',
+    accessToken: '',
+    refreshToken: '',
+    expiresAt: 0
+  });
 
   // System State
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
@@ -80,6 +90,61 @@ const App: React.FC = () => {
   // Auth State
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
+  // --- OAUTH CALLBACK HANDLER (TIKTOK) ---
+  useEffect(() => {
+    const handleAuthCallback = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
+
+      // If we have a code, we are returning from TikTok
+      if (code) {
+        console.log("TikTok Authorization Code detected:", code);
+        setIsLoadingData(true);
+        
+        // Ensure we are logged in or in a state to accept this
+        // For simplicity, we process it. In production, check state for CSRF.
+        
+        try {
+          // We need the keys to exchange. Since state might not be fully loaded, 
+          // we assume the user just clicked connect and keys are in localStorage or state.
+          // However, on a redirect, React state resets. We must pull from storage.
+          // But since initFirebase handles storage, we wait for it? 
+          // Actually, let's grab directly from local storage for the exchange to be safe.
+          
+          const storedKey = localStorage.getItem('nexus_tt_client_key') || 'aw4f52prfxu4yqzx'; // Fallback to provided default
+          const storedSecret = localStorage.getItem('nexus_tt_client_secret') || 'ZoNVIyX4xracwFi08hwIwhMuFA3mwtPw';
+
+          const tokens = await exchangeTikTokCode(code, storedKey, storedSecret);
+          
+          const newAuthData: Partial<TikTokAuthData> = {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            expiresAt: Date.now() + (tokens.expiresIn * 1000)
+          };
+
+          // Save to storage
+          saveSettings(profile, landingContent, { tiktokAuth: newAuthData });
+          
+          // Clean URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          alert("TikTok conectado com sucesso!");
+          setCurrentView('admin'); // Go to admin to show success
+          setIsLoggedIn(true); // Assuming admin context if they were doing this
+          
+        } catch (error) {
+          console.error("Failed to exchange TikTok code:", error);
+          alert("Falha na conexão com TikTok (Verifique Console).");
+        } finally {
+          setIsLoadingData(false);
+        }
+      }
+    };
+
+    handleAuthCallback();
+  }, []); // Run once on mount
+
   // --- INICIALIZAÇÃO ---
   useEffect(() => {
     initFirebase();
@@ -102,7 +167,10 @@ const App: React.FC = () => {
       if (data.landingContent) setLandingContent(data.landingContent);
       if (data.keys) {
         setYoutubeApiKey(data.keys.youtube || '');
-        setTiktokAccessToken(data.keys.tiktok || '');
+        // Load TikTok Data
+        if (data.keys.tiktokAuth) {
+           setTiktokAuth(prev => ({ ...prev, ...data.keys.tiktokAuth }));
+        }
       }
       setIsLoadingData(false);
     }, () => {});
@@ -121,22 +189,23 @@ const App: React.FC = () => {
   // --- SAVE ACTIONS WRAPPERS ---
   const handleSaveProfile = (newProfile: CreatorProfile) => {
     setProfile(newProfile); // Optimistic update
-    saveSettings(newProfile, landingContent, { youtube: youtubeApiKey, tiktok: tiktokAccessToken });
+    saveSettings(newProfile, landingContent, { youtube: youtubeApiKey, tiktokAuth });
   };
 
   const handleSaveLanding = (newContent: LandingPageContent) => {
     setLandingContent(newContent); // Optimistic
-    saveSettings(profile, newContent, { youtube: youtubeApiKey, tiktok: tiktokAccessToken });
+    saveSettings(profile, newContent, { youtube: youtubeApiKey, tiktokAuth });
   };
 
   const handleSaveYoutubeKey = (key: string) => {
     setYoutubeApiKey(key); // Optimistic
-    saveSettings(profile, landingContent, { youtube: key, tiktok: tiktokAccessToken });
+    saveSettings(profile, landingContent, { youtube: key, tiktokAuth });
   };
 
-  const handleSaveTiktokToken = (token: string) => {
-    setTiktokAccessToken(token); // Optimistic
-    saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktok: token });
+  const handleSaveTiktokAuth = (newAuth: Partial<TikTokAuthData>) => {
+    const updated = { ...tiktokAuth, ...newAuth };
+    setTiktokAuth(updated);
+    saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth: newAuth });
   };
 
   const handleUpdatePosts = (newPosts: SocialPost[]) => {
@@ -314,8 +383,8 @@ const App: React.FC = () => {
           setProfile={handleSaveProfile}
           youtubeApiKey={youtubeApiKey}
           setYoutubeApiKey={handleSaveYoutubeKey}
-          tiktokAccessToken={tiktokAccessToken}
-          setTiktokAccessToken={handleSaveTiktokToken}
+          tiktokAuth={tiktokAuth}
+          setTiktokAuth={handleSaveTiktokAuth}
         />
       )}
 
