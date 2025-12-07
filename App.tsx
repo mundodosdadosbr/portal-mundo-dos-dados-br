@@ -5,7 +5,7 @@ import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
 import { Captcha } from './components/Captcha';
-import { X, Lock, Smartphone, CheckCircle, AlertTriangle, CloudLightning, ShieldCheck, QrCode } from './components/Icons';
+import { X, Lock, Smartphone, CheckCircle, AlertTriangle, CloudLightning, ShieldCheck, QrCode, FileText } from './components/Icons';
 import { 
   initFirebase, 
   loginWithCredentials, 
@@ -72,10 +72,65 @@ const RawTextRenderer = ({ content }: { content: string }) => {
   );
 };
 
+// --- CONFIG HELP SCREEN ---
+const ConfigHelpScreen = () => (
+  <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+    <div className="max-w-2xl w-full bg-slate-900 border border-red-500/30 rounded-2xl p-8 shadow-2xl">
+      <div className="flex items-center gap-3 text-red-400 mb-6">
+        <AlertTriangle size={32} />
+        <h1 className="text-2xl font-bold">Configuração Necessária: Firestore Rules</h1>
+      </div>
+      
+      <p className="text-slate-300 mb-4">
+        O aplicativo não tem permissão para ler os dados do Firebase. Isso é normal em projetos novos configurados em "Modo Produção".
+      </p>
+
+      <div className="space-y-4">
+        <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
+          <h3 className="font-bold text-indigo-400 mb-2">Como Corrigir:</h3>
+          <ol className="list-decimal list-inside space-y-2 text-sm text-slate-300">
+            <li>Acesse o <a href="https://console.firebase.google.com/" target="_blank" className="underline text-white">Console do Firebase</a>.</li>
+            <li>Vá em <strong>Firestore Database</strong> &gt; aba <strong>Rules</strong>.</li>
+            <li>Substitua as regras atuais pelo código abaixo e clique em <strong>Publish</strong>.</li>
+          </ol>
+        </div>
+
+        <div className="relative">
+          <pre className="bg-slate-800 p-4 rounded-lg text-xs font-mono text-emerald-400 overflow-x-auto border border-slate-700">
+{`rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // PERMITIR LEITURA PÚBLICA (Para o site funcionar)
+    // PERMITIR ESCRITA APENAS PARA ADMINS
+    match /{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}`}
+          </pre>
+        </div>
+
+        <button 
+          onClick={() => window.location.reload()}
+          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-colors mt-4"
+        >
+          Já atualizei as regras, Recarregar Página
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 const App: React.FC = () => {
   // 1. URL INTERCEPTION FOR VIRTUAL FILES (ASYNC CLOUD CHECK)
   const [virtualFileContent, setVirtualFileContent] = useState<string | null>(null);
   const [isCheckingFile, setIsCheckingFile] = useState(true);
+
+  // Error State for Firestore Rules
+  const [dbPermissionError, setDbPermissionError] = useState(false);
 
   useEffect(() => {
     const checkPath = async () => {
@@ -201,14 +256,22 @@ const App: React.FC = () => {
         }
       }
       setIsLoadingData(false);
-    }, (error) => {
+    }, (error: any) => {
       console.error("Erro ao sincronizar configurações:", error);
+      if (error && (error.code === 'permission-denied' || error.message?.includes('permission'))) {
+        setDbPermissionError(true);
+        setIsLoadingData(false);
+      }
     });
 
     const unsubPosts = subscribeToPosts((newPosts) => {
       setPosts(newPosts);
-    }, (error) => {
+    }, (error: any) => {
       console.error("Erro ao sincronizar posts:", error);
+      // Only set error if not already set by settings (avoid double toggle)
+      if (error && (error.code === 'permission-denied' || error.message?.includes('permission'))) {
+        setDbPermissionError(true);
+      }
     });
 
     return () => {
@@ -383,13 +446,18 @@ const App: React.FC = () => {
   };
 
   // --- RENDER ---
+
+  // 1. Show Permissions Help if Rules are wrong
+  if (dbPermissionError) {
+    return <ConfigHelpScreen />;
+  }
   
-  // Show raw text if virtual file match found
+  // 2. Show raw text if virtual file match found
   if (virtualFileContent !== null) {
     return <RawTextRenderer content={virtualFileContent} />;
   }
 
-  // Optional: Global loading state while connecting to DB
+  // 3. Global loading state while connecting to DB
   if (isCheckingFile) {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-500">
       <div className="w-8 h-8 border-2 border-slate-700 border-t-indigo-500 rounded-full animate-spin"></div>
