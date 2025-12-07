@@ -8,7 +8,7 @@ import {
 } from '../types';
 import { getYouTubePosts } from '../services/youtubeService';
 import { getTikTokPosts, getTikTokAuthUrl, DEFAULT_CLIENT_KEY, DEFAULT_CLIENT_SECRET, getRedirectUri } from '../services/tiktokService';
-import { TikTokAuthData, getVirtualFiles, saveVirtualFile, deleteVirtualFile, VirtualFile } from '../services/firebase';
+import { TikTokAuthData, getVirtualFilesCloud, saveVirtualFile, deleteVirtualFile, VirtualFile } from '../services/firebase';
 import { 
   Trash2, 
   Plus, 
@@ -103,7 +103,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   useEffect(() => {
     if (activeView === 'files') {
-      setVirtualFiles(getVirtualFiles());
+      getVirtualFilesCloud().then(setVirtualFiles);
     }
   }, [activeView]);
 
@@ -240,18 +240,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
-  const handleSaveFile = (e: React.FormEvent) => {
+  const handleSaveFile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFile.path || !newFile.content) return;
     
-    saveVirtualFile({ ...newFile, type: 'text/plain' });
-    setVirtualFiles(getVirtualFiles());
+    await saveVirtualFile({ ...newFile, type: 'text/plain' });
+    const files = await getVirtualFilesCloud();
+    setVirtualFiles(files);
     setNewFile({ path: '', content: '' });
   };
 
-  const handleDeleteFile = (path: string) => {
-    deleteVirtualFile(path);
-    setVirtualFiles(getVirtualFiles());
+  const handleDeleteFile = async (path: string) => {
+    await deleteVirtualFile(path);
+    const files = await getVirtualFilesCloud();
+    setVirtualFiles(files);
   };
 
   const isTikTokConnected = !!tiktokAuth.accessToken;

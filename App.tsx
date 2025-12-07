@@ -23,38 +23,37 @@ import {
   clearAllPosts, 
   isAuthenticated, 
   TikTokAuthData, 
-  getVirtualFileContent 
+  checkVirtualFileContent 
 } from './services/firebase';
 import { exchangeTikTokCode } from './services/tiktokService';
 
-// --- DADOS PADRÃO (FALLBACK) ---
+// --- DADOS PADRÃO (FALLBACK VISUAL APENAS) ---
 const INITIAL_PROFILE: CreatorProfile = {
-  name: "Mundo dos Dados BR",
-  handle: "@mundodosdadosbr",
-  avatarUrl: "images/logo.png", // Use the local logo as default avatar
+  name: "Carregando...",
+  handle: "@...",
+  avatarUrl: "images/logo.png",
   faviconUrl: "images/logo.png", 
-  subscribers: "0",
-  bio: "Aqui, mergulhamos no fascinante universo dos dados, abrindo portas para entusiastas, iniciantes e profissionais.",
+  subscribers: "-",
+  bio: "Conectando ao banco de dados...",
 };
 
 const INITIAL_LANDING_CONTENT: LandingPageContent = {
-  headline: "Mundo dos Dados BR",
-  subheadline: "Nosso canal é o guia perfeito para quem busca compreender e aplicar o poder dos dados.",
-  ctaButtonText: "Explorar Dados",
+  headline: "CreatorNexus",
+  subheadline: "Carregando configurações...",
+  ctaButtonText: "Aguarde",
   logoUrl: "images/logo.png",
-  feature1Title: "Análise de Negócios",
-  feature1Desc: "Conteúdo essencial sobre Business Intelligence.",
-  feature2Title: "Ciência de Dados",
-  feature2Desc: "Explorações profundas em Data Science.",
-  feature3Title: "Educação em Dados",
-  feature3Desc: "O guia perfeito para entusiastas e iniciantes.",
+  feature1Title: "...",
+  feature1Desc: "...",
+  feature2Title: "...",
+  feature2Desc: "...",
+  feature3Title: "...",
+  feature3Desc: "...",
 };
 
 type ViewState = 'landing' | 'portal' | 'admin';
 type LoginStep = 'credentials' | 'mfa-setup' | 'mfa-verify';
 
 // --- VIRTUAL FILE RENDERER (RAW TEXT) ---
-// This component is used to hijack the render and show plain text for verification files
 const RawTextRenderer = ({ content }: { content: string }) => {
   return (
     <pre style={{ 
@@ -74,30 +73,28 @@ const RawTextRenderer = ({ content }: { content: string }) => {
 };
 
 const App: React.FC = () => {
-  // 1. URL INTERCEPTION FOR VIRTUAL FILES
-  // Check if current URL matches a saved virtual file (e.g. /ads.txt)
+  // 1. URL INTERCEPTION FOR VIRTUAL FILES (ASYNC CLOUD CHECK)
   const [virtualFileContent, setVirtualFileContent] = useState<string | null>(null);
-  
+  const [isCheckingFile, setIsCheckingFile] = useState(true);
+
   useEffect(() => {
-    // Get path without leading slash
-    const path = window.location.pathname.substring(1);
-    if (path) {
-      const content = getVirtualFileContent(path);
-      if (content) {
-        setVirtualFileContent(content);
-        // Important: Stop react from messing with the title/meta for this view
-        document.title = path; 
+    const checkPath = async () => {
+      // Get path without leading slash
+      const path = window.location.pathname.substring(1);
+      // Ignore empty path (home) or specific app routes if using router (we aren't yet)
+      if (path && path !== '') {
+        const content = await checkVirtualFileContent(path);
+        if (content) {
+          setVirtualFileContent(content);
+          document.title = path; 
+        }
       }
-    }
+      setIsCheckingFile(false);
+    };
+    checkPath();
   }, []);
 
-  // If we found a virtual file, render IT ONLY and exit normal app flow
-  if (virtualFileContent !== null) {
-    return <RawTextRenderer content={virtualFileContent} />;
-  }
-
-  // --- NORMAL APP FLOW ---
-  
+  // --- APP STATE ---
   const [currentView, setCurrentView] = useState<ViewState>('landing');
   
   // Data State
@@ -116,7 +113,6 @@ const App: React.FC = () => {
   });
 
   // System State
-  const [isFirebaseReady, setIsFirebaseReady] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
   // Login Modal State
@@ -133,7 +129,7 @@ const App: React.FC = () => {
   // Captcha State
   const [generatedCaptcha, setGeneratedCaptcha] = useState('');
   const [captchaInput, setCaptchaInput] = useState('');
-  const [captchaKey, setCaptchaKey] = useState(0); // Used to force refresh
+  const [captchaKey, setCaptchaKey] = useState(0); 
   
   // MFA Setup State
   const [mfaSecret, setMfaSecret] = useState('');
@@ -147,13 +143,13 @@ const App: React.FC = () => {
     const handleAuthCallback = async () => {
       const urlParams = new URLSearchParams(window.location.search);
       const code = urlParams.get('code');
-      // If code exists, it's NOT a virtual file request, it's OAuth
       if (code) {
-        console.log("TikTok Authorization Code detected:", code);
         setIsLoadingData(true);
         try {
-          const storedKey = localStorage.getItem('nexus_tt_client_key') || 'aw4f52prfxu4yqzx'; 
-          const storedSecret = localStorage.getItem('nexus_tt_client_secret') || 'ZoNVIyX4xracwFi08hwIwhMuFA3mwtPw';
+          // Note: In Cloud mode, we should fetch these keys from DB first if not in state
+          // For now relying on state/defaults
+          const storedKey = tiktokAuth.clientKey || 'aw4f52prfxu4yqzx'; 
+          const storedSecret = tiktokAuth.clientSecret || 'ZoNVIyX4xracwFi08hwIwhMuFA3mwtPw';
 
           const tokens = await exchangeTikTokCode(code, storedKey, storedSecret);
           
@@ -163,7 +159,7 @@ const App: React.FC = () => {
             expiresAt: Date.now() + (tokens.expiresIn * 1000)
           };
 
-          saveSettings(profile, landingContent, { tiktokAuth: newAuthData });
+          saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth: { ...tiktokAuth, ...newAuthData } });
           
           window.history.replaceState({}, document.title, window.location.pathname);
           
@@ -173,31 +169,28 @@ const App: React.FC = () => {
           
         } catch (error) {
           console.error("Failed to exchange TikTok code:", error);
-          alert("Falha na conexão com TikTok (Verifique Console).");
+          alert("Falha na conexão com TikTok.");
         } finally {
           setIsLoadingData(false);
         }
       }
     };
-
-    handleAuthCallback();
-  }, []); 
+    
+    // Only run if not blocking for virtual file
+    if (!isCheckingFile) handleAuthCallback();
+  }, [isCheckingFile, tiktokAuth, profile, landingContent, youtubeApiKey]); 
 
   // --- INICIALIZAÇÃO ---
   useEffect(() => {
     initFirebase();
     if (isAuthenticated()) {
       setIsLoggedIn(true);
-      setIsFirebaseReady(true);
-    } else {
-      setIsFirebaseReady(true);
     }
   }, []);
 
-  // --- DATA SYNC ---
+  // --- DATA SYNC (CLOUD) ---
   useEffect(() => {
-    if (!isFirebaseReady) return;
-
+    // Subscribe immediately to Cloud data
     const unsubSettings = subscribeToSettings((data) => {
       if (data.profile) setProfile(prev => ({ ...prev, ...data.profile }));
       if (data.landingContent) setLandingContent(data.landingContent);
@@ -208,63 +201,23 @@ const App: React.FC = () => {
         }
       }
       setIsLoadingData(false);
-    }, () => {});
+    }, (error) => {
+      console.error("Erro ao sincronizar configurações:", error);
+    });
 
     const unsubPosts = subscribeToPosts((newPosts) => {
       setPosts(newPosts);
-    }, () => {});
+    }, (error) => {
+      console.error("Erro ao sincronizar posts:", error);
+    });
 
     return () => {
       unsubSettings();
       unsubPosts();
     };
-  }, [isFirebaseReady]);
+  }, []);
 
-  // --- SAVE ACTIONS WRAPPERS ---
-  const handleSaveProfile = (newProfile: CreatorProfile) => {
-    setProfile(newProfile);
-    saveSettings(newProfile, landingContent, { youtube: youtubeApiKey, tiktokAuth });
-  };
-
-  const handleSaveLanding = (newContent: LandingPageContent) => {
-    setLandingContent(newContent);
-    saveSettings(profile, newContent, { youtube: youtubeApiKey, tiktokAuth });
-  };
-
-  const handleSaveYoutubeKey = (key: string) => {
-    setYoutubeApiKey(key);
-    saveSettings(profile, landingContent, { youtube: key, tiktokAuth });
-  };
-
-  const handleSaveTiktokAuth = (newAuth: Partial<TikTokAuthData>) => {
-    const updated = { ...tiktokAuth, ...newAuth };
-    setTiktokAuth(updated);
-    saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth: newAuth });
-  };
-
-  const handleUpdatePosts = (newPosts: SocialPost[]) => {
-    setPosts(newPosts);
-  };
-
-  const dbActions = {
-    addPost: (post: SocialPost) => {
-      savePost(post);
-      setPosts(prev => [post, ...prev]);
-    },
-    deletePost: (id: string) => {
-      deletePostById(id);
-      setPosts(prev => prev.filter(p => p.id !== id));
-    },
-    syncPosts: (posts: SocialPost[]) => {
-      bulkSavePosts(posts);
-      setPosts(prev => [...posts, ...prev]);
-    },
-    clearPosts: () => {
-      clearAllPosts();
-      setPosts([]);
-    }
-  };
-
+  // --- FAVICON SYNC ---
   useEffect(() => {
     if (profile.faviconUrl) {
       const existingLink = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
@@ -281,16 +234,54 @@ const App: React.FC = () => {
   }, [profile.faviconUrl, profile.name]);
 
 
-  const handlePortalAccess = () => {
-    setCurrentView('portal');
+  // --- SAVE WRAPPERS ---
+  const handleSaveProfile = (newProfile: CreatorProfile) => {
+    setProfile(newProfile); // Optimistic
+    saveSettings(newProfile, landingContent, { youtube: youtubeApiKey, tiktokAuth });
   };
+
+  const handleSaveLanding = (newContent: LandingPageContent) => {
+    setLandingContent(newContent); // Optimistic
+    saveSettings(profile, newContent, { youtube: youtubeApiKey, tiktokAuth });
+  };
+
+  const handleSaveYoutubeKey = (key: string) => {
+    setYoutubeApiKey(key);
+    saveSettings(profile, landingContent, { youtube: key, tiktokAuth });
+  };
+
+  const handleSaveTiktokAuth = (newAuth: Partial<TikTokAuthData>) => {
+    const updated = { ...tiktokAuth, ...newAuth };
+    setTiktokAuth(updated);
+    saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth: updated });
+  };
+
+  const handleUpdatePosts = (newPosts: SocialPost[]) => {
+    setPosts(newPosts);
+  };
+
+  const dbActions = {
+    addPost: (post: SocialPost) => {
+      savePost(post);
+    },
+    deletePost: (id: string) => {
+      deletePostById(id);
+    },
+    syncPosts: (posts: SocialPost[]) => {
+      bulkSavePosts(posts);
+    },
+    clearPosts: () => {
+      clearAllPosts();
+    }
+  };
+
+  const handlePortalAccess = () => setCurrentView('portal');
 
   const handleAdminLoginClick = () => {
     if (isLoggedIn) {
       setCurrentView('admin');
       return;
     }
-
     setIsLoginModalOpen(true);
     setLoginError('');
     setUsername('');
@@ -298,7 +289,6 @@ const App: React.FC = () => {
     setMfaCode('');
     setCaptchaInput('');
     setLoginStep('credentials');
-    // Force refresh captcha
     setCaptchaKey(prev => prev + 1);
   };
 
@@ -308,7 +298,6 @@ const App: React.FC = () => {
     setCurrentView('landing');
   };
 
-  // --- CAPTCHA HANDLER (MEMOIZED) ---
   const handleCaptchaGenerate = useCallback((code: string) => {
     setGeneratedCaptcha(code);
   }, []);
@@ -318,11 +307,10 @@ const App: React.FC = () => {
     setIsAuthenticating(true);
     setLoginError('');
 
-    // 1. Validate Captcha
     if (captchaInput.toUpperCase() !== generatedCaptcha) {
       setLoginError('Código Captcha incorreto.');
       setIsAuthenticating(false);
-      setCaptchaKey(prev => prev + 1); // Refresh image
+      setCaptchaKey(prev => prev + 1);
       setCaptchaInput('');
       return;
     }
@@ -343,7 +331,7 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error(error);
       setLoginError(error.message || "Falha na autenticação.");
-      setCaptchaKey(prev => prev + 1); // Refresh Captcha on failed password too
+      setCaptchaKey(prev => prev + 1);
       setCaptchaInput('');
     } finally {
       setIsAuthenticating(false);
@@ -393,6 +381,20 @@ const App: React.FC = () => {
       setIsAuthenticating(false);
     }
   };
+
+  // --- RENDER ---
+  
+  // Show raw text if virtual file match found
+  if (virtualFileContent !== null) {
+    return <RawTextRenderer content={virtualFileContent} />;
+  }
+
+  // Optional: Global loading state while connecting to DB
+  if (isCheckingFile) {
+    return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-500">
+      <div className="w-8 h-8 border-2 border-slate-700 border-t-indigo-500 rounded-full animate-spin"></div>
+    </div>;
+  }
 
   return (
     <>
