@@ -4,6 +4,7 @@ import { SocialPost, Platform, CreatorProfile, LandingPageContent } from './type
 import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
+import { Captcha } from './components/Captcha';
 import { X, Lock, Smartphone, CheckCircle, AlertTriangle, CloudLightning, ShieldCheck, QrCode } from './components/Icons';
 import { 
   initFirebase, 
@@ -128,6 +129,11 @@ const App: React.FC = () => {
   const [password, setPassword] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [loginError, setLoginError] = useState('');
+  
+  // Captcha State
+  const [generatedCaptcha, setGeneratedCaptcha] = useState('');
+  const [captchaInput, setCaptchaInput] = useState('');
+  const [captchaKey, setCaptchaKey] = useState(0); // Used to force refresh
   
   // MFA Setup State
   const [mfaSecret, setMfaSecret] = useState('');
@@ -290,7 +296,10 @@ const App: React.FC = () => {
     setUsername('');
     setPassword('');
     setMfaCode('');
+    setCaptchaInput('');
     setLoginStep('credentials');
+    // Force refresh captcha
+    setCaptchaKey(prev => prev + 1);
   };
 
   const handleLogout = async () => {
@@ -303,6 +312,15 @@ const App: React.FC = () => {
     e.preventDefault();
     setIsAuthenticating(true);
     setLoginError('');
+
+    // 1. Validate Captcha
+    if (captchaInput.toUpperCase() !== generatedCaptcha) {
+      setLoginError('Código Captcha incorreto.');
+      setIsAuthenticating(false);
+      setCaptchaKey(prev => prev + 1); // Refresh image
+      setCaptchaInput('');
+      return;
+    }
 
     try {
       await loginWithCredentials(username, password);
@@ -320,6 +338,8 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error(error);
       setLoginError(error.message || "Falha na autenticação.");
+      setCaptchaKey(prev => prev + 1); // Refresh Captcha on failed password too
+      setCaptchaInput('');
     } finally {
       setIsAuthenticating(false);
     }
@@ -438,7 +458,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {/* STEP 1: USERNAME & PASSWORD */}
+            {/* STEP 1: USERNAME, PASSWORD & CAPTCHA */}
             {loginStep === 'credentials' && (
               <form onSubmit={handleCredentialsSubmit} className="space-y-4 animate-fade-in">
                 <div>
@@ -462,10 +482,31 @@ const App: React.FC = () => {
                     placeholder="Sua senha segura"
                   />
                 </div>
+                
+                {/* CAPTCHA SECTION */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-400 mb-2">Verificação de Segurança</label>
+                  <div className="flex flex-col gap-3">
+                    <Captcha 
+                      key={captchaKey} 
+                      onGenerate={(code) => setGeneratedCaptcha(code)} 
+                    />
+                    <input 
+                      type="text"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-indigo-500 focus:outline-none uppercase tracking-widest font-mono"
+                      value={captchaInput}
+                      onChange={(e) => setCaptchaInput(e.target.value)}
+                      placeholder="DIGITE O CÓDIGO"
+                      maxLength={6}
+                      required
+                    />
+                  </div>
+                </div>
+
                 <button 
                   type="submit"
                   disabled={isAuthenticating}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed mt-2"
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed mt-4"
                 >
                   {isAuthenticating ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
