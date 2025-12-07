@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { SocialPost, Platform, CreatorProfile, LandingPageContent } from './types';
 import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
@@ -9,21 +9,21 @@ import { X, Lock, Smartphone, CheckCircle, AlertTriangle, CloudLightning, Shield
 import { 
   initFirebase, 
   loginWithCredentials, 
-  checkMfaStatus,
-  initiateMfaSetup,
-  verifyMfaToken,
-  completeMfaSetup,
+  checkMfaStatus, 
+  initiateMfaSetup, 
+  verifyMfaToken, 
+  completeMfaSetup, 
   logout, 
   subscribeToSettings, 
   subscribeToPosts, 
-  saveSettings,
-  savePost,
-  deletePostById,
-  bulkSavePosts,
-  clearAllPosts,
-  isAuthenticated,
-  TikTokAuthData,
-  getVirtualFileContent
+  saveSettings, 
+  savePost, 
+  deletePostById, 
+  bulkSavePosts, 
+  clearAllPosts, 
+  isAuthenticated, 
+  TikTokAuthData, 
+  getVirtualFileContent 
 } from './services/firebase';
 import { exchangeTikTokCode } from './services/tiktokService';
 
@@ -308,6 +308,11 @@ const App: React.FC = () => {
     setCurrentView('landing');
   };
 
+  // --- CAPTCHA HANDLER (MEMOIZED) ---
+  const handleCaptchaGenerate = useCallback((code: string) => {
+    setGeneratedCaptcha(code);
+  }, []);
+
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsAuthenticating(true);
@@ -489,7 +494,7 @@ const App: React.FC = () => {
                   <div className="flex flex-col gap-3">
                     <Captcha 
                       key={captchaKey} 
-                      onGenerate={(code) => setGeneratedCaptcha(code)} 
+                      onGenerate={handleCaptchaGenerate} 
                     />
                     <input 
                       type="text"
