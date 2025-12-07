@@ -56,6 +56,7 @@ const App: React.FC = () => {
   const [landingContent, setLandingContent] = useState<LandingPageContent>(INITIAL_LANDING_CONTENT);
   const [profile, setProfile] = useState<CreatorProfile>(INITIAL_PROFILE);
   const [youtubeApiKey, setYoutubeApiKey] = useState('');
+  const [tiktokAccessToken, setTiktokAccessToken] = useState('');
 
   // System State
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
@@ -99,7 +100,10 @@ const App: React.FC = () => {
     const unsubSettings = subscribeToSettings((data) => {
       if (data.profile) setProfile(prev => ({ ...prev, ...data.profile }));
       if (data.landingContent) setLandingContent(data.landingContent);
-      if (data.youtubeApiKey) setYoutubeApiKey(data.youtubeApiKey);
+      if (data.keys) {
+        setYoutubeApiKey(data.keys.youtube || '');
+        setTiktokAccessToken(data.keys.tiktok || '');
+      }
       setIsLoadingData(false);
     }, () => {});
 
@@ -117,17 +121,22 @@ const App: React.FC = () => {
   // --- SAVE ACTIONS WRAPPERS ---
   const handleSaveProfile = (newProfile: CreatorProfile) => {
     setProfile(newProfile); // Optimistic update
-    saveSettings(newProfile, landingContent, youtubeApiKey);
+    saveSettings(newProfile, landingContent, { youtube: youtubeApiKey, tiktok: tiktokAccessToken });
   };
 
   const handleSaveLanding = (newContent: LandingPageContent) => {
     setLandingContent(newContent); // Optimistic
-    saveSettings(profile, newContent, youtubeApiKey);
+    saveSettings(profile, newContent, { youtube: youtubeApiKey, tiktok: tiktokAccessToken });
   };
 
-  const handleSaveApiKey = (key: string) => {
+  const handleSaveYoutubeKey = (key: string) => {
     setYoutubeApiKey(key); // Optimistic
-    saveSettings(profile, landingContent, key);
+    saveSettings(profile, landingContent, { youtube: key, tiktok: tiktokAccessToken });
+  };
+
+  const handleSaveTiktokToken = (token: string) => {
+    setTiktokAccessToken(token); // Optimistic
+    saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktok: token });
   };
 
   const handleUpdatePosts = (newPosts: SocialPost[]) => {
@@ -304,7 +313,9 @@ const App: React.FC = () => {
           profile={profile}
           setProfile={handleSaveProfile}
           youtubeApiKey={youtubeApiKey}
-          setYoutubeApiKey={handleSaveApiKey}
+          setYoutubeApiKey={handleSaveYoutubeKey}
+          tiktokAccessToken={tiktokAccessToken}
+          setTiktokAccessToken={handleSaveTiktokToken}
         />
       )}
 

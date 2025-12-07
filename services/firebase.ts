@@ -8,7 +8,8 @@ const KEY_MFA_SECRET = 'nexus_mfa_secret';
 const KEY_PROFILE = 'nexus_profile';
 const KEY_LANDING = 'nexus_landing_content';
 const KEY_POSTS = 'nexus_posts';
-const KEY_API_KEY = 'nexus_yt_api_key';
+const KEY_YT_API_KEY = 'nexus_yt_api_key';
+const KEY_TT_ACCESS_TOKEN = 'nexus_tt_access_token';
 
 // --- AUTHENTICATION (LOCAL / MOCK) ---
 
@@ -24,7 +25,7 @@ const MOCK_USER = {
 export const initFirebase = () => {
   // Setup default data if empty
   if (!localStorage.getItem(KEY_PROFILE)) {
-    // defaults are handled in App.tsx initial state, but we can seed here if needed
+    // defaults are handled in App.tsx initial state
   }
 };
 
@@ -46,6 +47,7 @@ export const loginWithCredentials = async (username: string, pass: string) => {
 
 export const logout = async () => {
   localStorage.removeItem(KEY_AUTH_TOKEN);
+  localStorage.removeItem(KEY_MFA_SECRET); // Clear MFA for demo purposes on logout
 };
 
 // --- MFA (LOCAL) ---
@@ -94,11 +96,13 @@ export const completeMfaSetup = async (secret: string) => {
 export const saveSettings = async (
   profile: CreatorProfile, 
   landingContent: LandingPageContent, 
-  youtubeApiKey: string
+  keys: { youtube?: string, tiktok?: string }
 ) => {
   localStorage.setItem(KEY_PROFILE, JSON.stringify(profile));
   localStorage.setItem(KEY_LANDING, JSON.stringify(landingContent));
-  localStorage.setItem(KEY_API_KEY, youtubeApiKey);
+  
+  if (keys.youtube !== undefined) localStorage.setItem(KEY_YT_API_KEY, keys.youtube);
+  if (keys.tiktok !== undefined) localStorage.setItem(KEY_TT_ACCESS_TOKEN, keys.tiktok);
   
   // Trigger local event to simulate subscription update
   window.dispatchEvent(new Event('nexus-storage-update'));
@@ -108,7 +112,7 @@ export const subscribeToSettings = (
   onUpdate: (data: { 
     profile?: CreatorProfile, 
     landingContent?: LandingPageContent, 
-    youtubeApiKey?: string
+    keys: { youtube: string, tiktok: string }
   }) => void,
   onError?: (error: any) => void
 ) => {
@@ -116,12 +120,13 @@ export const subscribeToSettings = (
   const load = () => {
     const profileStr = localStorage.getItem(KEY_PROFILE);
     const landingStr = localStorage.getItem(KEY_LANDING);
-    const apiKey = localStorage.getItem(KEY_API_KEY) || '';
+    const ytKey = localStorage.getItem(KEY_YT_API_KEY) || '';
+    const ttToken = localStorage.getItem(KEY_TT_ACCESS_TOKEN) || '';
 
     onUpdate({
       profile: profileStr ? JSON.parse(profileStr) : undefined,
       landingContent: landingStr ? JSON.parse(landingStr) : undefined,
-      youtubeApiKey: apiKey
+      keys: { youtube: ytKey, tiktok: ttToken }
     });
   };
 

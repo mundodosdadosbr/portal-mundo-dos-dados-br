@@ -7,6 +7,7 @@ import {
   CreatorProfile
 } from '../types';
 import { getYouTubePosts } from '../services/youtubeService';
+import { getTikTokPosts } from '../services/tiktokService';
 import { 
   Trash2, 
   Plus, 
@@ -44,6 +45,8 @@ interface AdminDashboardProps {
   setProfile: (p: CreatorProfile) => void;
   youtubeApiKey: string;
   setYoutubeApiKey: (k: string) => void;
+  tiktokAccessToken: string;
+  setTiktokAccessToken: (t: string) => void;
 }
 
 type AdminView = 'content' | 'integrations' | 'pages' | 'profile' | 'analytics';
@@ -59,7 +62,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   profile,
   setProfile,
   youtubeApiKey,
-  setYoutubeApiKey
+  setYoutubeApiKey,
+  tiktokAccessToken,
+  setTiktokAccessToken
 }) => {
   const [activeView, setActiveView] = useState<AdminView>('content');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -102,16 +107,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsSyncing(true);
     
     try {
-      // FIX: Usando o handle específico para garantir a busca no canal correto
-      const realYoutubePosts = await getYouTubePosts('@MundodosDadosBR', 20, youtubeApiKey);
+      // 1. YouTube Service
+      const realYoutubePosts = await getYouTubePosts('@MundodosDadosBR', 10, youtubeApiKey);
+      
+      // 2. TikTok Service (Novo)
+      // Pass the stored Access Token to attempt real API fetch
+      const tiktokPosts = await getTikTokPosts('@MundodosDadosBR', tiktokAccessToken);
+
+      // 3. Mock para outras plataformas (Instagram/Facebook)
       const otherPlatformsMock = generateMockPostsForOtherPlatforms();
       
-      const combinedPosts = [...realYoutubePosts, ...otherPlatformsMock];
+      const combinedPosts = [...realYoutubePosts, ...tiktokPosts, ...otherPlatformsMock];
       
       if (dbActions) {
         // Salva no Firestore
         dbActions.syncPosts(combinedPosts);
-        alert(`Sincronização Cloud concluída! ${realYoutubePosts.length} vídeos salvos no banco de dados.`);
+        alert(`Sincronização concluída!\n\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nOutros: ${otherPlatformsMock.length}`);
       } else {
         // Local only fallback
         setPosts((prev: any) => {
@@ -123,34 +134,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } catch (error: any) {
       console.error(error);
       const errorMessage = error.message || 'Erro desconhecido';
-      alert(`Erro na API YouTube: ${errorMessage}`);
+      alert(`Erro parcial na sincronização: ${errorMessage}`);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const generateMockPostsForOtherPlatforms = (count = 5) => {
-      const platforms = [Platform.INSTAGRAM, Platform.TIKTOK, Platform.FACEBOOK];
+  const generateMockPostsForOtherPlatforms = (count = 3) => {
+      const platforms = [Platform.INSTAGRAM, Platform.FACEBOOK];
       const titles = [
-        "Bastidores do escritório", "Dicas rápidas de SQL", "Python vs R", 
-        "Dashboard Power BI", "Vida de Data Scientist", "Review Livro Dados", "Meme SQL", 
-        "Café e ETL", "Notícias Big Data", "Dica de Pandas"
+        "Bastidores do escritório", "Dashboard Power BI", "Vida de Data Scientist", "Review Livro Dados", 
+        "Café e ETL", "Notícias Big Data"
       ];
       
       return Array.from({ length: count }).map((_, i) => {
         const platform = platforms[Math.floor(Math.random() * platforms.length)];
-        const isVideo = platform === Platform.TIKTOK;
         
         return {
           id: `sync-mock-${Date.now()}-${i}`,
           platform,
-          thumbnailUrl: `https://picsum.photos/seed/${Math.random()}/${isVideo ? '400/700' : '400/500'}`,
+          thumbnailUrl: `https://picsum.photos/seed/${Math.random()}/500/500`,
           title: undefined,
           caption: `${titles[Math.floor(Math.random() * titles.length)]} - Confira no ${platform}! 🚀`,
           likes: Math.floor(Math.random() * 5000),
           comments: Math.floor(Math.random() * 100),
-          views: isVideo ? Math.floor(Math.random() * 20000) : undefined,
-          date: new Date().toISOString(), // Use ISO for better sorting in DB
+          views: undefined,
+          date: new Date().toISOString(),
           url: '#'
         } as SocialPost;
       });
@@ -284,7 +293,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium border border-slate-700"
                 >
                   <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
-                  <span>{isSyncing ? 'Conectando à API...' : 'Sincronizar Tudo'}</span>
+                  <span>{isSyncing ? 'Conectando APIs...' : 'Sincronizar Tudo'}</span>
                 </button>
                 <button 
                   onClick={() => setIsAddModalOpen(true)}
@@ -336,6 +345,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td className="px-6 py-4">
                             <span className="inline-flex items-center space-x-1 px-2 py-1 rounded-md text-xs font-medium border border-slate-700 bg-slate-800">
+                              {post.platform === Platform.YOUTUBE && <Youtube size={12} className="text-red-500" />}
+                              {post.platform === Platform.TIKTOK && <TikTokIcon className="w-3 h-3 text-white" />}
+                              {post.platform === Platform.INSTAGRAM && <Instagram size={12} className="text-fuchsia-500" />}
+                              {post.platform === Platform.FACEBOOK && <Facebook size={12} className="text-blue-500" />}
                               <span>{post.platform}</span>
                             </span>
                           </td>
@@ -343,6 +356,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div className="flex flex-col space-y-1">
                               <span>❤️ {post.likes.toLocaleString('pt-BR')}</span>
                               <span>💬 {post.comments.toLocaleString('pt-BR')}</span>
+                              {post.views && <span>👁️ {post.views.toLocaleString('pt-BR')}</span>}
                             </div>
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -599,16 +613,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                     
                     <div className="mt-4 space-y-2">
-                       <label className="text-xs text-slate-400">Chave de API do YouTube (Opcional)</label>
+                       <label className="text-xs text-slate-400">Chave de API do YouTube</label>
                        <input 
                          type="password" 
                          value={youtubeApiKey}
                          onChange={(e) => setYoutubeApiKey(e.target.value)}
-                         placeholder="Cole sua API Key aqui se a padrão falhar"
+                         placeholder="Cole sua API Key aqui"
                          className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-red-500 focus:outline-none"
                        />
                        <p className="text-[10px] text-slate-500">
-                         Se o botão "Sincronizar" falhar, crie uma chave no Google Cloud Console com "YouTube Data API v3" habilitada e cole aqui.
+                         Necessário para sincronização em tempo real do YouTube.
+                       </p>
+                    </div>
+                  </div>
+
+                  {/* TikTok */}
+                  <div className={`p-6 rounded-xl border transition-all bg-slate-900 border-emerald-500/30`}>
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-teal-400 rounded-full flex items-center justify-center text-black">
+                          <TikTokIcon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold">TikTok</h4>
+                          <p className="text-xs text-slate-500">Display API v2</p>
+                        </div>
+                      </div>
+                      <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                        <CheckCircle size={12} /> Ativo
+                      </span>
+                    </div>
+                    
+                    <div className="mt-4 space-y-2">
+                       <label className="text-xs text-slate-400">Access Token do TikTok</label>
+                       <input 
+                         type="password" 
+                         value={tiktokAccessToken}
+                         onChange={(e) => setTiktokAccessToken(e.target.value)}
+                         placeholder="Cole seu Access Token aqui"
+                         className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
+                       />
+                       <p className="text-[10px] text-slate-500">
+                         Necessário para buscar vídeos reais. Se vazio, usará dados de demonstração.
                        </p>
                     </div>
                   </div>
@@ -616,7 +662,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {/* Other Platforms (Simulated) */}
                   {[
                     { id: Platform.INSTAGRAM, icon: Instagram, color: 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500', name: 'Instagram' },
-                    { id: Platform.TIKTOK, icon: TikTokIcon, color: 'bg-teal-400 text-black', name: 'TikTok' },
                     { id: Platform.FACEBOOK, icon: Facebook, color: 'bg-blue-600', name: 'Facebook' }
                   ].map((p) => (
                     <div key={p.id} className={`p-6 rounded-xl border transition-all ${connectedPlatforms[p.id] ? 'bg-slate-900 border-emerald-500/30' : 'bg-slate-900/50 border-slate-800'}`}>
