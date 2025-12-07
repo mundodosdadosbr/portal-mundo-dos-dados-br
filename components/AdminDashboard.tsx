@@ -7,7 +7,7 @@ import {
   CreatorProfile
 } from '../types';
 import { getYouTubePosts } from '../services/youtubeService';
-import { getTikTokPosts, getTikTokAuthUrl, DEFAULT_CLIENT_KEY, DEFAULT_CLIENT_SECRET } from '../services/tiktokService';
+import { getTikTokPosts, getTikTokAuthUrl, DEFAULT_CLIENT_KEY, DEFAULT_CLIENT_SECRET, getRedirectUri } from '../services/tiktokService';
 import { TikTokAuthData } from '../services/firebase';
 import { 
   Trash2, 
@@ -699,6 +699,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             placeholder="Client Secret"
                             className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-teal-500 focus:outline-none"
                           />
+                       </div>
+
+                       {/* HELPER FOR REDIRECT URI */}
+                       <div className="bg-slate-950 p-3 rounded border border-slate-800">
+                          <p className="text-[10px] text-slate-500 mb-1 font-bold">⚠️ Configuração Obrigatória (TikTok Portal):</p>
+                          <p className="text-[10px] text-slate-400">
+                             Copie esta URL exata para o campo <strong>Redirect domains</strong> e <strong>Callback URL</strong> no seu App TikTok:
+                          </p>
+                          <div className="mt-1 bg-slate-900 p-1.5 rounded text-indigo-400 text-xs font-mono break-all select-all cursor-text border border-slate-800/50">
+                             {getRedirectUri()}
+                          </div>
                        </div>
                        
                        <button 

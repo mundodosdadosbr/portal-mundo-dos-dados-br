@@ -6,7 +6,17 @@ import { SocialPost, Platform } from '../types';
 // This is for local demonstration purposes only.
 export const DEFAULT_CLIENT_KEY = 'aw4f52prfxu4yqzx';
 export const DEFAULT_CLIENT_SECRET = 'ZoNVIyX4xracwFi08hwIwhMuFA3mwtPw';
-const REDIRECT_URI = window.location.origin; // e.g. http://localhost:3000
+
+// Helper to get the consistent Redirect URI
+export const getRedirectUri = () => {
+  return window.location.origin.endsWith('/') 
+    ? window.location.origin 
+    : `${window.location.origin}/`;
+};
+
+// TikTok is very strict about the Redirect URI.
+// It must match EXACTLY what is in the Developer Portal, including the trailing slash.
+const REDIRECT_URI = getRedirectUri();
 
 // Proxy to bypass CORS on localhost
 // Use corsproxy.io to route requests (Proxy -> TikTok -> Client)
@@ -17,17 +27,20 @@ const CORS_PROXY = 'https://corsproxy.io/?';
  */
 export const getTikTokAuthUrl = (clientKey: string) => {
   const csrfState = Math.random().toString(36).substring(7);
-  // Scopes: user.info.basic (for name/avatar), video.list (for fetching videos)
+  
+  // Scopes: 
+  // user.info.basic: To get the Avatar and Display Name
+  // video.list: To get the videos
   const scope = 'user.info.basic,video.list';
   
-  let url = 'https://www.tiktok.com/v2/auth/authorize/';
-  url += `?client_key=${clientKey}`;
-  url += `&scope=${scope}`;
-  url += `&response_type=code`;
-  url += `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
-  url += `&state=${csrfState}`;
+  const url = new URL('https://www.tiktok.com/v2/auth/authorize/');
+  url.searchParams.set('client_key', clientKey);
+  url.searchParams.set('scope', scope);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('redirect_uri', REDIRECT_URI);
+  url.searchParams.set('state', csrfState);
   
-  return url;
+  return url.toString();
 };
 
 /**
@@ -157,6 +170,7 @@ export const getTikTokPosts = async (
   if (validAccessToken) {
     try {
       // API call to get video list
+      // Note: view_count might need specific permissions or different endpoints depending on API version
       const fields = "id,title,cover_image_url,like_count,comment_count,view_count,create_time,share_url";
       
       const targetUrl = `https://open.tiktokapis.com/v2/video/list/?fields=${fields}`;
