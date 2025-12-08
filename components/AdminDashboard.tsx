@@ -11,7 +11,7 @@ import { getYouTubePosts, getYouTubeChannelStatistics } from '../services/youtub
 import { 
   getTikTokPosts, 
   getTikTokAuthUrl, 
-  exchangeTikTokCode, // Added import
+  exchangeTikTokCode, 
   DEFAULT_CLIENT_KEY, 
   DEFAULT_CLIENT_SECRET, 
   getRedirectUri 
@@ -266,12 +266,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       
       if (dbActions) {
         dbActions.syncPosts(combinedPosts);
-        alert(`Sincronização concluída!\n
-        YouTube: ${realYoutubePosts.length}
-        TikTok: ${tiktokPosts.length}
-        Instagram: ${igPosts.length}
-        Facebook: ${fbPosts.length}
-        \nSeguidores atualizados.`);
+        
+        // Custom Alert message based on results
+        let msg = `Sincronização concluída!\n\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nInstagram: ${igPosts.length}\nFacebook: ${fbPosts.length}`;
+        
+        if (metaAuth.accessToken && igPosts.length === 0 && fbPosts.length > 0) {
+           msg += `\n\n⚠️ AVISO: Facebook conectado, mas nenhum post do Instagram encontrado. Verifique se sua conta do Instagram é "Business" e se está vinculada à Página do Facebook.`;
+        }
+
+        alert(msg);
       } else {
         setPosts((prev: any) => {
           const newItems = [...combinedPosts];

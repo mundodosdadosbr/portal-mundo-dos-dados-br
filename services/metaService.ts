@@ -46,6 +46,7 @@ const getConnectedAccounts = async (accessToken: string) => {
     
     if (data.error) throw new Error(data.error.message);
     
+    console.log("Facebook Pages Found:", data.data?.length || 0);
     return data.data || [];
   } catch (error) {
     console.error("Meta: Error fetching accounts", error);
@@ -67,11 +68,12 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
     const igPage = pages.find((p: any) => p.instagram_business_account);
     
     if (!igPage) {
-      console.warn("Nenhuma conta de Instagram Business encontrada vinculada às suas páginas do Facebook.");
+      console.warn("DIAGNÓSTICO: Páginas do Facebook encontradas, mas nenhuma tem 'instagram_business_account' vinculado. Verifique as configurações da Página no Facebook.");
       return [];
     }
 
     const igUserId = igPage.instagram_business_account.id;
+    console.log(`Instagram Business ID encontrado: ${igUserId} (na página ${igPage.name})`);
 
     // Step C: Fetch Media
     // Fields: caption, media_type, media_url, permalink, thumbnail_url, like_count, comments_count, timestamp
@@ -82,19 +84,30 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
 
     if (data.error) throw new Error(data.error.message);
 
-    return (data.data || []).map((item: any) => ({
-      id: item.id,
-      platform: Platform.INSTAGRAM,
-      title: '', // IG doesn't have titles usually
-      caption: item.caption || '',
-      // If VIDEO, use thumbnail_url, else media_url
-      thumbnailUrl: item.media_type === 'VIDEO' ? item.thumbnail_url : item.media_url,
-      likes: item.like_count || 0,
-      comments: item.comments_count || 0,
-      views: 0, // Basic display API doesn't return view_count easily
-      date: item.timestamp,
-      url: item.permalink
-    }));
+    return (data.data || []).map((item: any) => {
+      // Logic to determine the correct image URL based on media type
+      let imageUrl = item.media_url;
+      
+      if (item.media_type === 'VIDEO') {
+        imageUrl = item.thumbnail_url || item.media_url;
+      } else if (item.media_type === 'CAROUSEL_ALBUM') {
+        // Carousel usually has media_url for the first item, fallback to thumbnail if present
+        imageUrl = item.media_url || item.thumbnail_url; 
+      }
+
+      return {
+        id: item.id,
+        platform: Platform.INSTAGRAM,
+        title: '', // IG doesn't have titles usually
+        caption: item.caption || '',
+        thumbnailUrl: imageUrl,
+        likes: item.like_count || 0,
+        comments: item.comments_count || 0,
+        views: 0, // Basic display API doesn't return view_count easily
+        date: item.timestamp,
+        url: item.permalink
+      };
+    });
 
   } catch (error) {
     console.error("Instagram Service Error:", error);
