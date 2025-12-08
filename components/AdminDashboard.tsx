@@ -869,7 +869,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex-grow overflow-y-auto p-8">
               <div className="max-w-3xl mx-auto bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
                  <div className="space-y-6">
-                    <input type="text" value={localLanding.headline} onChange={(e) => setLocalLanding({...localLanding, headline: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" />
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">Título Principal (Headline)</label>
+                        <input type="text" value={localLanding.headline} onChange={(e) => setLocalLanding({...localLanding, headline: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" />
+                    </div>
+                    
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">Subtítulo</label>
+                        <textarea rows={3} value={localLanding.subheadline} onChange={(e) => setLocalLanding({...localLanding, subheadline: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                           <label className="block text-sm font-medium text-slate-400 mb-1">Texto do Botão (CTA)</label>
+                           <input type="text" value={localLanding.ctaButtonText} onChange={(e) => setLocalLanding({...localLanding, ctaButtonText: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" />
+                        </div>
+                        <div>
+                           <label className="block text-sm font-medium text-slate-400 mb-1">URL do Logo</label>
+                           <input type="text" value={localLanding.logoUrl || ''} onChange={(e) => setLocalLanding({...localLanding, logoUrl: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" placeholder="https://..." />
+                        </div>
+                    </div>
                     
                     <div className="pt-6 border-t border-slate-800">
                       <div className="flex items-center justify-between mb-4">
@@ -880,10 +899,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {localLanding.features && localLanding.features.map((feature) => (
                           <div key={feature.id} className="bg-slate-950 border border-slate-700 rounded-lg p-4 relative group">
                              <div className="flex justify-between items-start mb-3">
-                               <input type="text" value={feature.title} onChange={(e) => handleUpdateFeature(feature.id, 'title', e.target.value)} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
-                               <button onClick={() => handleRemoveFeature(feature.id)} className="text-slate-600 hover:text-red-400"><Trash2 size={16} /></button>
+                               <input type="text" value={feature.title} onChange={(e) => handleUpdateFeature(feature.id, 'title', e.target.value)} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white font-bold" placeholder="Título do Recurso" />
+                               
+                               <div className="flex items-center gap-2">
+                                  <div className="relative group/icon">
+                                     <div className="w-8 h-8 bg-slate-800 rounded flex items-center justify-center cursor-pointer border border-slate-700">
+                                        {React.createElement(AvailableIcons[feature.icon] || AvailableIcons['Star'], { size: 16 })}
+                                     </div>
+                                     {/* Simple Icon Picker Dropdown */}
+                                     <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700 rounded-lg p-2 grid grid-cols-4 gap-2 hidden group-hover/icon:grid z-20 shadow-xl">
+                                        {Object.keys(AvailableIcons).map(iconName => (
+                                           <button key={iconName} onClick={() => handleUpdateFeature(feature.id, 'icon', iconName)} className={`p-1.5 rounded hover:bg-indigo-500/20 ${feature.icon === iconName ? 'bg-indigo-500/40 text-indigo-400' : 'text-slate-400'}`}>
+                                              {React.createElement(AvailableIcons[iconName], { size: 16 })}
+                                           </button>
+                                        ))}
+                                     </div>
+                                  </div>
+                                  <button onClick={() => handleRemoveFeature(feature.id)} className="text-slate-600 hover:text-red-400 p-1"><Trash2 size={16} /></button>
+                               </div>
                              </div>
-                             <textarea value={feature.description} onChange={(e) => handleUpdateFeature(feature.id, 'description', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" />
+                             <textarea value={feature.description} onChange={(e) => handleUpdateFeature(feature.id, 'description', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-300" rows={2} placeholder="Descrição do recurso..." />
                           </div>
                         ))}
                       </div>

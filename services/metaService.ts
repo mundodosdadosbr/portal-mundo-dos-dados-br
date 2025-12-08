@@ -40,10 +40,13 @@ export const getMetaAuthUrl = (appId: string) => {
 
 /**
  * 2. Fetch User's Pages and linked Instagram Accounts
+ * Updated to fetch username to allow filtering
  */
 const getConnectedAccounts = async (accessToken: string) => {
   try {
-    const response = await fetch(`${GRAPH_API_URL}/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${accessToken}`);
+    // Request nested fields: instagram_business_account{id,username}
+    const fields = 'id,name,access_token,instagram_business_account{id,username,profile_picture_url}';
+    const response = await fetch(`${GRAPH_API_URL}/me/accounts?fields=${fields}&access_token=${accessToken}`);
     const data = await response.json();
     
     if (data.error) throw new Error(data.error.message);
@@ -58,24 +61,36 @@ const getConnectedAccounts = async (accessToken: string) => {
 
 /**
  * 3. Fetch Instagram Media
+ * Targeted for 'mundodosdadosbrasil'
  */
 export const getInstagramPosts = async (accessToken: string): Promise<SocialPost[]> => {
   if (!accessToken) return [];
+
+  const TARGET_HANDLE = 'mundodosdadosbrasil';
 
   try {
     // Step A: Get Pages
     const pages = await getConnectedAccounts(accessToken);
     
-    // Step B: Find first page with IG Business Account
-    const igPage = pages.find((p: any) => p.instagram_business_account);
+    // Step B: Find specific IG Business Account
+    let igPage = pages.find((p: any) => 
+      p.instagram_business_account?.username?.toLowerCase() === TARGET_HANDLE
+    );
+    
+    // Fallback: If not found, take the first one available
+    if (!igPage) {
+      console.warn(`Conta '${TARGET_HANDLE}' não encontrada. Tentando primeira conta disponível...`);
+      igPage = pages.find((p: any) => p.instagram_business_account);
+    }
     
     if (!igPage) {
-      console.warn("DIAGNÓSTICO: Páginas do Facebook encontradas, mas nenhuma tem 'instagram_business_account' vinculado. Verifique as configurações da Página no Facebook.");
+      console.warn("DIAGNÓSTICO: Páginas do Facebook encontradas, mas nenhuma tem 'instagram_business_account' vinculado.");
       return [];
     }
 
     const igUserId = igPage.instagram_business_account.id;
-    console.log(`Instagram Business ID encontrado: ${igUserId} (na página ${igPage.name})`);
+    const igUsername = igPage.instagram_business_account.username;
+    console.log(`Instagram Business ID: ${igUserId} (@${igUsername})`);
 
     // Step C: Fetch Media
     // Fields: caption, media_type, media_url, permalink, thumbnail_url, like_count, comments_count, timestamp
@@ -119,24 +134,30 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
 
 /**
  * 4. Fetch Facebook Page Posts
+ * Targeted for 'Mundo dos Dados BR'
  */
 export const getFacebookPosts = async (accessToken: string): Promise<SocialPost[]> => {
   if (!accessToken) return [];
+
+  const TARGET_PAGE_NAME = 'Mundo dos Dados BR';
 
   try {
     // Step A: Get Pages
     const pages = await getConnectedAccounts(accessToken);
     
-    // For demo, just pick the first page found
-    // In production, user should select which page to sync
-    const fbPage = pages[0];
+    // Find specific page
+    let fbPage = pages.find((p: any) => p.name === TARGET_PAGE_NAME);
     
     if (!fbPage) {
-      console.warn("Nenhuma página do Facebook encontrada.");
+      console.warn(`Página '${TARGET_PAGE_NAME}' não encontrada. Usando a primeira disponível.`);
+      fbPage = pages[0];
+    }
+    
+    if (!fbPage) {
       return [];
     }
 
-    // Use the PAGE Access Token, not the User Token (usually required for clearer insights, but User token often works for reading)
+    // Use the PAGE Access Token
     const pageToken = fbPage.access_token || accessToken;
     const pageId = fbPage.id;
 
@@ -157,7 +178,7 @@ export const getFacebookPosts = async (accessToken: string): Promise<SocialPost[
       thumbnailUrl: item.full_picture,
       likes: item.likes?.summary?.total_count || 0,
       comments: item.comments?.summary?.total_count || 0,
-      views: 0, // FB doesn't provide public view counts via Graph API easily
+      views: 0, 
       date: item.created_time,
       url: item.permalink_url
     }));
@@ -188,48 +209,33 @@ export const debugMetaConnection = async (accessToken: string) => {
 
     if (pages.length === 0) {
       logs.push("ALERTA CRÍTICO: Nenhuma página encontrada.");
-      logs.push("CAUSAS POSSÍVEIS:");
-      logs.push("1. No popup de login, você desmarcou a Página 'Mundo dos Dados'.");
-      logs.push("2. O App no Facebook Developers está em 'Modo Desenvolvimento' e você não é Admin/Tester dele.");
-      logs.push("SOLUÇÃO: Clique em 'Conectar' novamente (atualizamos para pedir permissão de novo) e certifique-se de marcar TODAS as páginas.");
+      logs.push("SOLUÇÃO: Clique em 'Conectar' e marque TODAS as páginas no popup do Facebook.");
       return logs;
     }
 
     // 2. Check each page for IG
     let igFound = false;
     for (const page of pages) {
-      logs.push(`Analizando Página: "${page.name}" (ID: ${page.id})`);
+      logs.push(`---`);
+      logs.push(`Página FB: "${page.name}" (ID: ${page.id})`);
+      
       if (page.instagram_business_account) {
         igFound = true;
-        logs.push(`✅ SUCESSO: Instagram Business vinculado! ID: ${page.instagram_business_account.id}`);
+        const igUser = page.instagram_business_account.username || 'Desconhecido';
+        logs.push(`✅ VINCULADO: Instagram @${igUser} (ID: ${page.instagram_business_account.id})`);
         
-        // Try simple fetch
-        try {
-           logs.push("Tentando buscar 1 post de teste...");
-           const testUrl = `${GRAPH_API_URL}/${page.instagram_business_account.id}/media?limit=1&access_token=${accessToken}`;
-           const resp = await fetch(testUrl);
-           const json = await resp.json();
-           if (json.data) {
-             logs.push("✅ Teste de leitura OK. API retornou dados.");
-           } else if (json.error) {
-             logs.push(`❌ Erro na leitura: ${json.error.message}`);
-           }
-        } catch (e: any) {
-           logs.push(`❌ Falha na requisição de teste: ${e.message}`);
+        if (igUser.toLowerCase() === 'mundodosdadosbrasil') {
+             logs.push("🌟 ESTA É A CONTA ALVO CORRETA!");
         }
 
       } else {
-        logs.push("⚠️ AVISO: Esta página NÃO tem conta do Instagram vinculada na API.");
-        logs.push("DICA: Vá no Meta Business Suite > Configurações > Contas do Instagram e vincule.");
+        logs.push("⚠️ SEM VÍNCULO: Esta página não tem conta Instagram Business associada na API.");
       }
     }
-
+    
     if (!igFound) {
-      logs.push("--- RESULTADO FINAL: FALHA ---");
-      logs.push("Nenhuma das páginas que você autorizou tem um Instagram Business vinculado.");
-    } else {
-      logs.push("--- RESULTADO FINAL: OK ---");
-      logs.push("Parece tudo correto. Tente clicar em 'Sincronizar Tudo' novamente.");
+       logs.push("---");
+       logs.push("RESUMO: Nenhuma conta Instagram foi encontrada nas páginas listadas.");
     }
 
   } catch (error: any) {
