@@ -18,7 +18,8 @@ import {
   bulkSavePosts, 
   clearAllPosts, 
   isAuthenticated, 
-  TikTokAuthData, 
+  TikTokAuthData,
+  MetaAuthData, 
   checkVirtualFileContent,
   checkMfaStatus,
   initiateMfaSetup,
@@ -108,9 +109,6 @@ const ConfigHelpScreen = () => (
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // PERMITIR LEITURA PÚBLICA (Para o site funcionar)
-    // PERMITIR ESCRITA APENAS PARA ADMINS
     match /{document=**} {
       allow read: if true;
       allow write: if request.auth != null;
@@ -141,9 +139,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkPath = async () => {
-      // Get path without leading slash
       const path = window.location.pathname.substring(1);
-      // Ignore empty path (home) or specific app routes if using router (we aren't yet)
       if (path && path !== '') {
         const content = await checkVirtualFileContent(path);
         if (content) {
@@ -165,12 +161,18 @@ const App: React.FC = () => {
   const [profile, setProfile] = useState<CreatorProfile>(INITIAL_PROFILE);
   const [youtubeApiKey, setYoutubeApiKey] = useState('');
   
-  // TikTok State
+  // Auth Integration State
   const [tiktokAuth, setTiktokAuth] = useState<TikTokAuthData>({
     clientKey: '',
     clientSecret: '',
     accessToken: '',
     refreshToken: '',
+    expiresAt: 0
+  });
+
+  const [metaAuth, setMetaAuth] = useState<MetaAuthData>({
+    appId: '',
+    accessToken: '',
     expiresAt: 0
   });
 
@@ -184,7 +186,7 @@ const App: React.FC = () => {
   const [loginError, setLoginError] = useState('');
   
   // MFA State
-  const [tempUser, setTempUser] = useState<any>(null); // Stores firebase user before full UI login
+  const [tempUser, setTempUser] = useState<any>(null); 
   const [mfaSecret, setMfaSecret] = useState('');
   const [mfaQrUrl, setMfaQrUrl] = useState('');
   const [mfaCode, setMfaCode] = useState('');
@@ -192,12 +194,18 @@ const App: React.FC = () => {
   // Auth State
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // --- OAUTH CALLBACK HANDLER (TIKTOK) ---
+  // --- OAUTH CALLBACK HANDLER (TIKTOK & META) ---
   useEffect(() => {
     const handleAuthCallback = async () => {
+      // 1. Check for TikTok (Query Params: ?code=...)
       const urlParams = new URLSearchParams(window.location.search);
       const code = urlParams.get('code');
+      
+      // 2. Check for Meta (Hash Params: #access_token=...)
+      const hash = window.location.hash;
+      
       if (code) {
+        // TIKTOK FLOW
         setIsLoadingData(true);
         try {
           const storedKey = tiktokAuth.clientKey || 'aw4f52prfxu4yqzx'; 
@@ -211,10 +219,9 @@ const App: React.FC = () => {
             expiresAt: Date.now() + (tokens.expiresIn * 1000)
           };
 
-          saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth: { ...tiktokAuth, ...newAuthData } });
+          saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth: { ...tiktokAuth, ...newAuthData }, metaAuth });
           
           window.history.replaceState({}, document.title, window.location.pathname);
-          
           alert("TikTok conectado com sucesso!");
           setCurrentView('admin'); 
           setIsLoggedIn(true); 
@@ -225,12 +232,40 @@ const App: React.FC = () => {
         } finally {
           setIsLoadingData(false);
         }
+      } 
+      else if (hash && hash.includes('access_token')) {
+        // META FLOW
+        try {
+          const hashParams = new URLSearchParams(hash.substring(1)); // Remove #
+          const accessToken = hashParams.get('access_token');
+          const expiresIn = hashParams.get('expires_in'); // Seconds
+          
+          if (accessToken) {
+             const expiry = expiresIn ? Date.now() + (parseInt(expiresIn) * 1000) : Date.now() + (3600 * 1000); // Default 1h
+             
+             const newMetaAuth = {
+               ...metaAuth,
+               accessToken,
+               expiresAt: expiry
+             };
+
+             setMetaAuth(newMetaAuth);
+             saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth, metaAuth: newMetaAuth });
+
+             window.history.replaceState({}, document.title, window.location.pathname);
+             alert("Facebook/Instagram conectado com sucesso!");
+             setCurrentView('admin');
+             setIsLoggedIn(true);
+          }
+        } catch (error) {
+           console.error("Meta Auth Error:", error);
+        }
       }
     };
     
     // Only run if not blocking for virtual file
     if (!isCheckingFile) handleAuthCallback();
-  }, [isCheckingFile, tiktokAuth, profile, landingContent, youtubeApiKey]); 
+  }, [isCheckingFile, tiktokAuth, metaAuth, profile, landingContent, youtubeApiKey]); 
 
   // --- INICIALIZAÇÃO ---
   useEffect(() => {
@@ -247,7 +282,6 @@ const App: React.FC = () => {
       if (data.profile) setProfile(prev => ({ ...prev, ...data.profile }));
       
       if (data.landingContent) {
-         // MIGRATION LOGIC: Convert old format to new dynamic features if needed
          let content: any = data.landingContent;
          if (!content.features && content.feature1Title) {
             content.features = [
@@ -260,7 +294,6 @@ const App: React.FC = () => {
            content.features = INITIAL_LANDING_CONTENT.features;
          }
          
-         // Ensure chatbot config exists
          if (!content.chatbotConfig) {
             content.chatbotConfig = INITIAL_CHATBOT;
          }
@@ -272,6 +305,9 @@ const App: React.FC = () => {
         setYoutubeApiKey(data.keys.youtube || '');
         if (data.keys.tiktokAuth) {
            setTiktokAuth(prev => ({ ...prev, ...data.keys.tiktokAuth }));
+        }
+        if (data.keys.metaAuth) {
+           setMetaAuth(prev => ({ ...prev, ...data.keys.metaAuth }));
         }
       }
       setIsLoadingData(false);
@@ -318,23 +354,29 @@ const App: React.FC = () => {
   // --- SAVE WRAPPERS ---
   const handleSaveProfile = (newProfile: CreatorProfile) => {
     setProfile(newProfile); // Optimistic
-    saveSettings(newProfile, landingContent, { youtube: youtubeApiKey, tiktokAuth });
+    saveSettings(newProfile, landingContent, { youtube: youtubeApiKey, tiktokAuth, metaAuth });
   };
 
   const handleSaveLanding = (newContent: LandingPageContent) => {
     setLandingContent(newContent); // Optimistic
-    saveSettings(profile, newContent, { youtube: youtubeApiKey, tiktokAuth });
+    saveSettings(profile, newContent, { youtube: youtubeApiKey, tiktokAuth, metaAuth });
   };
 
   const handleSaveYoutubeKey = (key: string) => {
     setYoutubeApiKey(key);
-    saveSettings(profile, landingContent, { youtube: key, tiktokAuth });
+    saveSettings(profile, landingContent, { youtube: key, tiktokAuth, metaAuth });
   };
 
   const handleSaveTiktokAuth = (newAuth: Partial<TikTokAuthData>) => {
     const updated = { ...tiktokAuth, ...newAuth };
     setTiktokAuth(updated);
-    saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth: updated });
+    saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth: updated, metaAuth });
+  };
+
+  const handleSaveMetaAuth = (newAuth: Partial<MetaAuthData>) => {
+    const updated = { ...metaAuth, ...newAuth };
+    setMetaAuth(updated);
+    saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth, metaAuth: updated });
   };
 
   const handleUpdatePosts = (newPosts: SocialPost[]) => {
@@ -448,17 +490,14 @@ const App: React.FC = () => {
 
   // --- RENDER ---
 
-  // 1. Show Permissions Help if Rules are wrong
   if (dbPermissionError) {
     return <ConfigHelpScreen />;
   }
   
-  // 2. Show raw text if virtual file match found
   if (virtualFileContent !== null) {
     return <RawTextRenderer content={virtualFileContent} />;
   }
 
-  // 3. Global loading state while connecting to DB
   if (isCheckingFile) {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-500">
       <div className="w-8 h-8 border-2 border-slate-700 border-t-indigo-500 rounded-full animate-spin"></div>
@@ -484,7 +523,6 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Global Chatbot Widget - Visible on Landing & Portal, but hidden in Admin */}
       {currentView !== 'admin' && landingContent.chatbotConfig && (
         <ChatWidget config={landingContent.chatbotConfig} />
       )}
@@ -511,6 +549,8 @@ const App: React.FC = () => {
           setYoutubeApiKey={handleSaveYoutubeKey}
           tiktokAuth={tiktokAuth}
           setTiktokAuth={handleSaveTiktokAuth}
+          metaAuth={metaAuth}
+          setMetaAuth={handleSaveMetaAuth}
         />
       )}
 

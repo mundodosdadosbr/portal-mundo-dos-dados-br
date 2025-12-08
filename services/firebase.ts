@@ -41,6 +41,12 @@ export interface TikTokAuthData {
   expiresAt: number;
 }
 
+export interface MetaAuthData {
+  appId: string;
+  accessToken: string;
+  expiresAt: number;
+}
+
 export interface VirtualFile {
   path: string;
   content: string;
@@ -51,8 +57,6 @@ export interface VirtualFile {
 
 export const initFirebase = () => {
   // Apenas monitora, mas a decisão de "estar logado na UI" depende do MFA no App.tsx
-  // Se o usuário recarregar a página e já estiver autenticado no Firebase, 
-  // o App.tsx deve verificar o MFA novamente ou confiar na sessão se desejar (aqui forçaremos re-login na UI para segurança)
 };
 
 export const isAuthenticated = () => {
@@ -103,7 +107,6 @@ export const loginWithGoogle = async () => {
   } catch (error: any) {
     console.error("Erro no Google Auth:", error);
     
-    // Fallback logic remains for preview environments
     if (error.code === 'auth/operation-not-supported-in-this-environment' || 
         error.message?.includes('protocol') ||
         error.code === 'auth/popup-closed-by-user') {
@@ -116,7 +119,7 @@ export const loginWithGoogle = async () => {
     if (error.code === 'auth/operation-not-allowed') {
        throw new Error("Login com Google não habilitado no console do Firebase.");
     }
-    throw error; // Repassa erro (ex: email invalido)
+    throw error;
   }
 };
 
@@ -129,7 +132,7 @@ export const logout = async () => {
 // --- MFA LOGIC (TOTP) ---
 
 export const checkMfaStatus = async (uid: string): Promise<boolean> => {
-  if (localStorage.getItem('nexus_mock_mode')) return true; // Bypass in demo mode
+  if (localStorage.getItem('nexus_mock_mode')) return true;
 
   try {
     const docRef = db.collection('users').doc(uid).collection('private').doc('mfa');
@@ -159,7 +162,6 @@ export const verifyMfaToken = async (token: string, uid: string, pendingSecret?:
 
   let secretStr = pendingSecret;
 
-  // Se não foi passado um segredo pendente (setup), busca no banco
   if (!secretStr) {
     const docRef = db.collection('users').doc(uid).collection('private').doc('mfa');
     const docSnap = await docRef.get();
@@ -179,7 +181,6 @@ export const verifyMfaToken = async (token: string, uid: string, pendingSecret?:
     secret: OTPAuth.Secret.fromBase32(secretStr)
   });
 
-  // Valida com janela de 1 (permite +- 30 segundos de diferença de relógio)
   return totp.validate({ token, window: 1 }) !== null;
 };
 
@@ -201,7 +202,11 @@ export const setUiSession = () => {
 export const saveSettings = async (
   profile: CreatorProfile, 
   landingContent: LandingPageContent, 
-  keys: { youtube?: string, tiktokAuth?: Partial<TikTokAuthData> }
+  keys: { 
+    youtube?: string, 
+    tiktokAuth?: Partial<TikTokAuthData>,
+    metaAuth?: Partial<MetaAuthData> 
+  }
 ) => {
   try {
     await db.collection('settings').doc('global_config').set({
@@ -218,7 +223,11 @@ export const subscribeToSettings = (
   onUpdate: (data: { 
     profile?: CreatorProfile, 
     landingContent?: LandingPageContent, 
-    keys: { youtube: string, tiktokAuth: TikTokAuthData }
+    keys: { 
+      youtube: string, 
+      tiktokAuth: TikTokAuthData,
+      metaAuth: MetaAuthData 
+    }
   }) => void,
   onError?: (error: any) => void
 ) => {
@@ -230,7 +239,8 @@ export const subscribeToSettings = (
         landingContent: data?.landingContent,
         keys: {
             youtube: data?.keys?.youtube || '',
-            tiktokAuth: data?.keys?.tiktokAuth || {}
+            tiktokAuth: data?.keys?.tiktokAuth || {},
+            metaAuth: data?.keys?.metaAuth || {}
         }
       });
     }
