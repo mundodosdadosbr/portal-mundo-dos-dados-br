@@ -58,6 +58,11 @@ const getConnectedAccounts = async (accessToken: string) => {
         const targetPageId = '61557248068717'; // Mundo dos Dados BR ID
         const directResp = await fetch(`${GRAPH_API_URL}/${targetPageId}?fields=${fields}&access_token=${accessToken}`);
         const directData = await directResp.json();
+        
+        if (directData.error) {
+            console.error("Erro no fallback direto:", directData.error);
+        }
+
         if (directData.id) {
             console.log("Página encontrada via ID direto!");
             return [directData];
@@ -196,9 +201,11 @@ export const debugMetaConnection = async (accessToken: string) => {
     logs.push("Verificando escopos concedidos (/me/permissions)...");
     const permResp = await fetch(`${GRAPH_API_URL}/me/permissions?access_token=${accessToken}`);
     const permData = await permResp.json();
+    let allGranted = true;
     if (permData.data) {
         permData.data.forEach((p: any) => {
             logs.push(` - ${p.permission}: ${p.status}`);
+            if (p.status !== 'granted') allGranted = false;
         });
     }
 
@@ -209,6 +216,15 @@ export const debugMetaConnection = async (accessToken: string) => {
 
     if (pages.length === 0) {
       logs.push("ALERTA CRÍTICO: Nenhuma página retornada.");
+      
+      if (allGranted) {
+          logs.push("--- ANÁLISE DE CAUSA RAIZ ---");
+          logs.push("1. As permissões estão OK ('granted').");
+          logs.push("2. Mas a API não retorna nenhuma página.");
+          logs.push("CONCLUSÃO: O usuário provavelmente não selecionou a página no popup de login.");
+          logs.push("SOLUÇÃO: Clique no botão 'Resetar Permissões (Facebook)' abaixo. Isso abrirá as configurações do Facebook. Remova o aplicativo 'Mundo dos Dados' da lista e tente conectar novamente do zero, garantindo marcar 'Todas as páginas'.");
+      }
+      
       return logs;
     }
 

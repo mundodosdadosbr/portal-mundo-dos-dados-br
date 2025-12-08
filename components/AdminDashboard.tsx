@@ -740,13 +740,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 {isDebugLoading ? <RefreshCw className="animate-spin" size={16} /> : <Zap size={16} />}
                              </button>
                              <button 
-                                onClick={() => handleConnectMeta(true)} // Force Rerequest
+                                onClick={() => handleConnectMeta(true)} 
                                 disabled={!metaAuth.appId}
                                 className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-3 rounded-lg flex items-center justify-center transition-colors text-xs font-bold"
                                 title="Re-autorizar Permissões (Correção)"
                               >
                                 Re-autorizar
                              </button>
+                             
+                             {/* HARD RESET BUTTON */}
+                             <a 
+                                href="https://www.facebook.com/settings?tab=business_tools" 
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-3 rounded-lg flex items-center justify-center transition-colors text-xs font-bold"
+                                title="Resetar Permissões no Facebook (Hard Reset)"
+                             >
+                                Resetar
+                             </a>
+
                              <button 
                                 onClick={() => isMetaConnected ? handleDisconnect(Platform.FACEBOOK) : handleConnectMeta(false)}
                                 className={`flex-grow py-2 rounded-lg text-sm font-medium transition-colors border ${isMetaConnected ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-blue-600 hover:bg-blue-500 text-white border-blue-600'}`}
@@ -766,7 +778,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                         <pre className="text-[10px] font-mono text-slate-300 whitespace-pre-wrap h-32 overflow-y-auto">
                           {debugLogs.map((log, i) => (
-                            <div key={i} className={log.includes('ERRO') || log.includes('FALHA') ? 'text-red-400' : log.includes('SUCESSO') ? 'text-emerald-400' : ''}>
+                            <div key={i} className={log.includes('ERRO') || log.includes('ALERTA') ? 'text-red-400' : log.includes('SUCESSO') ? 'text-emerald-400' : ''}>
                               {log}
                             </div>
                           ))}
