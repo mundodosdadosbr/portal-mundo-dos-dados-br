@@ -4,7 +4,7 @@ import { SocialPost, Platform, CreatorProfile, LandingPageContent } from './type
 import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
-import { X, Lock, AlertTriangle, GoogleIcon } from './components/Icons';
+import { X, Lock, AlertTriangle, GoogleIcon, Smartphone, ShieldCheck } from './components/Icons';
 import { 
   initFirebase, 
   loginWithGoogle,
@@ -18,7 +18,12 @@ import {
   clearAllPosts, 
   isAuthenticated, 
   TikTokAuthData, 
-  checkVirtualFileContent 
+  checkVirtualFileContent,
+  checkMfaStatus,
+  initiateMfaSetup,
+  verifyMfaToken,
+  saveMfaSecret,
+  setUiSession
 } from './services/firebase';
 import { exchangeTikTokCode } from './services/tiktokService';
 
@@ -45,6 +50,7 @@ const INITIAL_LANDING_CONTENT: LandingPageContent = {
 };
 
 type ViewState = 'landing' | 'portal' | 'admin';
+type LoginStep = 'google' | 'mfa-setup' | 'mfa-verify';
 
 // --- VIRTUAL FILE RENDERER (RAW TEXT) ---
 const RawTextRenderer = ({ content }: { content: string }) => {
@@ -165,9 +171,16 @@ const App: React.FC = () => {
 
   // Login Modal State
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [loginStep, setLoginStep] = useState<LoginStep>('google');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [loginError, setLoginError] = useState('');
   
+  // MFA State
+  const [tempUser, setTempUser] = useState<any>(null); // Stores firebase user before full UI login
+  const [mfaSecret, setMfaSecret] = useState('');
+  const [mfaQrUrl, setMfaQrUrl] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
+
   // Auth State
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
@@ -179,8 +192,6 @@ const App: React.FC = () => {
       if (code) {
         setIsLoadingData(true);
         try {
-          // Note: In Cloud mode, we should fetch these keys from DB first if not in state
-          // For now relying on state/defaults
           const storedKey = tiktokAuth.clientKey || 'aw4f52prfxu4yqzx'; 
           const storedSecret = tiktokAuth.clientSecret || 'ZoNVIyX4xracwFi08hwIwhMuFA3mwtPw';
 
@@ -231,14 +242,12 @@ const App: React.FC = () => {
          // MIGRATION LOGIC: Convert old format to new dynamic features if needed
          let content: any = data.landingContent;
          if (!content.features && content.feature1Title) {
-            console.log("Migrating legacy CMS content to dynamic features...");
             content.features = [
               { id: '1', title: content.feature1Title, description: content.feature1Desc, icon: 'TrendingUp' },
               { id: '2', title: content.feature2Title, description: content.feature2Desc, icon: 'CloudLightning' },
               { id: '3', title: content.feature3Title, description: content.feature3Desc, icon: 'Users' }
             ];
          }
-         // Ensure features array exists even if DB has partial data
          if (!content.features) {
            content.features = INITIAL_LANDING_CONTENT.features;
          }
@@ -264,7 +273,6 @@ const App: React.FC = () => {
       setPosts(newPosts);
     }, (error: any) => {
       console.error("Erro ao sincronizar posts:", error);
-      // Only set error if not already set by settings (avoid double toggle)
       if (error && (error.code === 'permission-denied' || error.message?.includes('permission'))) {
         setDbPermissionError(true);
       }
@@ -342,6 +350,7 @@ const App: React.FC = () => {
       return;
     }
     setIsLoginModalOpen(true);
+    setLoginStep('google');
     setLoginError('');
   };
 
@@ -351,17 +360,73 @@ const App: React.FC = () => {
     setCurrentView('landing');
   };
 
+  // --- AUTH FLOW HANDLERS ---
+
   const handleGoogleLogin = async () => {
     setIsAuthenticating(true);
     setLoginError('');
     try {
-      await loginWithGoogle();
-      setIsLoggedIn(true);
-      setCurrentView('admin');
-      setIsLoginModalOpen(false);
+      const user = await loginWithGoogle();
+      setTempUser(user);
+
+      // Check if user has MFA setup
+      const hasMfa = await checkMfaStatus(user.uid);
+      
+      if (hasMfa) {
+        setLoginStep('mfa-verify');
+      } else {
+        // First access: Setup MFA
+        const setup = initiateMfaSetup();
+        setMfaSecret(setup.secret);
+        setMfaQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(setup.otpauthUrl)}`);
+        setLoginStep('mfa-setup');
+      }
     } catch (error: any) {
       console.error(error);
       setLoginError(error.message || "Falha ao conectar com Google.");
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const handleMfaSetupComplete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthenticating(true);
+    setLoginError('');
+    try {
+      const isValid = await verifyMfaToken(mfaCode, tempUser.uid, mfaSecret);
+      if (isValid) {
+        await saveMfaSecret(tempUser.uid, mfaSecret);
+        setUiSession(); // Grant UI access
+        setIsLoggedIn(true);
+        setCurrentView('admin');
+        setIsLoginModalOpen(false);
+      } else {
+        setLoginError("Código incorreto. Tente novamente.");
+      }
+    } catch (err: any) {
+      setLoginError("Erro ao validar MFA.");
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const handleMfaVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthenticating(true);
+    setLoginError('');
+    try {
+      const isValid = await verifyMfaToken(mfaCode, tempUser.uid);
+      if (isValid) {
+        setUiSession(); // Grant UI access
+        setIsLoggedIn(true);
+        setCurrentView('admin');
+        setIsLoginModalOpen(false);
+      } else {
+        setLoginError("Código inválido.");
+      }
+    } catch (err) {
+      setLoginError("Erro na verificação.");
     } finally {
       setIsAuthenticating(false);
     }
@@ -455,26 +520,98 @@ const App: React.FC = () => {
               </div>
             )}
 
-            <div className="space-y-4">
-              <p className="text-slate-400 text-sm text-center mb-6">
-                Faça login com sua conta Google para gerenciar o conteúdo do portal.
-              </p>
-              
-              <button 
-                onClick={handleGoogleLogin}
-                disabled={isAuthenticating}
-                className="w-full bg-white hover:bg-slate-100 text-slate-900 font-bold py-3 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed group"
-              >
-                {isAuthenticating ? (
-                  <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-800 rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <GoogleIcon />
-                    <span>Entrar com Google</span>
-                  </>
-                )}
-              </button>
-            </div>
+            {/* STEP 1: GOOGLE LOGIN */}
+            {loginStep === 'google' && (
+              <div className="space-y-4">
+                <p className="text-slate-400 text-sm text-center mb-6">
+                  Faça login com sua conta Google autorizada (@mundodosdadosbr.com).
+                </p>
+                
+                <button 
+                  onClick={handleGoogleLogin}
+                  disabled={isAuthenticating}
+                  className="w-full bg-white hover:bg-slate-100 text-slate-900 font-bold py-3 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed group"
+                >
+                  {isAuthenticating ? (
+                    <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-800 rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <GoogleIcon />
+                      <span>Entrar com Google</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* STEP 2: MFA SETUP */}
+            {loginStep === 'mfa-setup' && (
+              <div className="animate-fade-in text-center">
+                 <div className="bg-white p-2 rounded-xl inline-block mb-3">
+                    {mfaQrUrl ? (
+                      <img src={mfaQrUrl} alt="QR Code" className="w-40 h-40" />
+                    ) : (
+                      <div className="w-40 h-40 bg-slate-200 flex items-center justify-center text-slate-400">
+                        <div className="w-8 h-8 border-2 border-slate-400 border-t-slate-600 rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                  <h4 className="font-bold text-white mb-1">Primeiro Acesso: Segurança</h4>
+                  <p className="text-xs text-slate-400 mb-4 px-2">
+                    Escaneie este QR Code com o <strong>Google Authenticator</strong> para proteger sua conta administrativa.
+                  </p>
+                  
+                  <form onSubmit={handleMfaSetupComplete} className="space-y-3">
+                    <input 
+                      type="text" 
+                      className="w-full bg-slate-950 border border-indigo-500/50 rounded-lg p-3 text-center text-2xl tracking-[0.5em] font-mono text-white focus:border-indigo-400 focus:outline-none"
+                      value={mfaCode}
+                      onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="000000"
+                      autoFocus
+                    />
+                    <button 
+                      type="submit"
+                      disabled={isAuthenticating || mfaCode.length !== 6}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                       <ShieldCheck size={18} />
+                       <span>Ativar Proteção</span>
+                    </button>
+                  </form>
+              </div>
+            )}
+
+            {/* STEP 3: MFA VERIFY */}
+            {loginStep === 'mfa-verify' && (
+              <div className="animate-fade-in text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-500/10 text-indigo-400 mb-4 ring-1 ring-indigo-500/30">
+                    <Smartphone size={32} />
+                </div>
+                <h4 className="text-xl font-bold text-white mb-2">Verificação em Duas Etapas</h4>
+                <p className="text-slate-400 text-sm mb-6">
+                   Digite o código do seu Google Authenticator para continuar.
+                </p>
+
+                <form onSubmit={handleMfaVerify} className="space-y-4">
+                  <input 
+                    type="text" 
+                    className="w-full bg-slate-950 border border-indigo-500/50 rounded-lg p-3 text-center text-2xl tracking-[0.5em] font-mono text-white focus:border-indigo-400 focus:outline-none"
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="000000"
+                    autoFocus
+                  />
+                  <button 
+                    type="submit"
+                    disabled={isAuthenticating || mfaCode.length !== 6}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg disabled:opacity-50"
+                  >
+                     Confirmar
+                  </button>
+                </form>
+              </div>
+            )}
             
             <div className="mt-8 pt-6 border-t border-slate-800 text-center">
                <p className="text-xs text-slate-600">

@@ -2,6 +2,7 @@
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
+import * as OTPAuth from 'otpauth';
 import { CreatorProfile, LandingPageContent, SocialPost } from '../types';
 
 // --- CONFIGURAÇÃO DO FIREBASE ---
@@ -29,6 +30,7 @@ console.log("🚀 [CreatorNexus] Conectado ao Firebase (Compat SDK)");
 auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.warn("Aviso de persistência:", e));
 
 const KEY_UI_SESSION = 'nexus_ui_session_indicator';
+const ALLOWED_EMAIL = 'diego.morais@mundodosdadosbr.com';
 
 // --- TYPES ---
 export interface TikTokAuthData {
@@ -48,26 +50,20 @@ export interface VirtualFile {
 // --- AUTHENTICATION ---
 
 export const initFirebase = () => {
-  auth.onAuthStateChanged((user) => {
-     if (user) {
-       localStorage.setItem(KEY_UI_SESSION, 'true');
-     } else {
-       if (!localStorage.getItem('nexus_mock_mode')) {
-         localStorage.removeItem(KEY_UI_SESSION);
-       }
-     }
-  });
+  // Apenas monitora, mas a decisão de "estar logado na UI" depende do MFA no App.tsx
+  // Se o usuário recarregar a página e já estiver autenticado no Firebase, 
+  // o App.tsx deve verificar o MFA novamente ou confiar na sessão se desejar (aqui forçaremos re-login na UI para segurança)
 };
 
 export const isAuthenticated = () => {
-  return !!localStorage.getItem(KEY_UI_SESSION) || !!auth.currentUser;
+  return !!localStorage.getItem(KEY_UI_SESSION);
 };
 
 // Mock User for Fallback
 const MOCK_ADMIN_USER: any = {
   uid: 'mock-admin-uid',
   displayName: 'Admin (Modo Demo)',
-  email: 'admin@demo.com',
+  email: ALLOWED_EMAIL,
   photoURL: 'images/logo.png'
 };
 
@@ -75,6 +71,15 @@ export const loginWithGoogle = async () => {
   const provider = new firebase.auth.GoogleAuthProvider();
   try {
     const result = await auth.signInWithPopup(provider);
+    const user = result.user;
+
+    if (!user) throw new Error("Nenhum usuário retornado.");
+
+    // 1. EMAIL RESTRICTION CHECK
+    if (user.email !== ALLOWED_EMAIL) {
+      await auth.signOut();
+      throw new Error(`Acesso negado. O e-mail ${user.email} não tem permissão de administrador.`);
+    }
     
     // Check/Create initial config for new user
     const userRef = db.collection('settings').doc('global_config');
@@ -83,9 +88,9 @@ export const loginWithGoogle = async () => {
     if (!userDoc.exists) {
       await userRef.set({
         profile: {
-            name: result.user?.displayName || "Novo Usuário",
-            handle: "@usuario",
-            avatarUrl: result.user?.photoURL || "images/logo.png",
+            name: user.displayName || "Mundo dos Dados",
+            handle: "@mundodosdadosbr",
+            avatarUrl: user.photoURL || "images/logo.png",
             subscribers: "0",
             bio: "Admin do Sistema"
         }
@@ -93,19 +98,17 @@ export const loginWithGoogle = async () => {
     }
 
     localStorage.removeItem('nexus_mock_mode');
-    return result.user;
+    return user;
 
   } catch (error: any) {
     console.error("Erro no Google Auth:", error);
     
-    // Fallback para ambientes de preview onde popup é bloqueado ou protocolo não suportado
+    // Fallback logic remains for preview environments
     if (error.code === 'auth/operation-not-supported-in-this-environment' || 
         error.message?.includes('protocol') ||
-        error.message?.includes('environment') ||
         error.code === 'auth/popup-closed-by-user') {
           
-      console.warn("⚠️ Ambiente restrito detectado. Ativando Modo Demo/Fallback para Login.");
-      localStorage.setItem(KEY_UI_SESSION, 'true');
+      console.warn("⚠️ Ambiente restrito. Ativando Modo Demo.");
       localStorage.setItem('nexus_mock_mode', 'true');
       return MOCK_ADMIN_USER;
     }
@@ -113,7 +116,7 @@ export const loginWithGoogle = async () => {
     if (error.code === 'auth/operation-not-allowed') {
        throw new Error("Login com Google não habilitado no console do Firebase.");
     }
-    throw new Error(`Falha na autenticação: ${error.message}`);
+    throw error; // Repassa erro (ex: email invalido)
   }
 };
 
@@ -121,6 +124,76 @@ export const logout = async () => {
   localStorage.removeItem(KEY_UI_SESSION);
   localStorage.removeItem('nexus_mock_mode');
   await auth.signOut();
+};
+
+// --- MFA LOGIC (TOTP) ---
+
+export const checkMfaStatus = async (uid: string): Promise<boolean> => {
+  if (localStorage.getItem('nexus_mock_mode')) return true; // Bypass in demo mode
+
+  try {
+    const docRef = db.collection('users').doc(uid).collection('private').doc('mfa');
+    const docSnap = await docRef.get();
+    return docSnap.exists;
+  } catch (e) {
+    console.error("Erro ao checar MFA:", e);
+    return false;
+  }
+};
+
+export const initiateMfaSetup = () => {
+  const secret = new OTPAuth.Secret({ size: 20 });
+  const totp = new OTPAuth.TOTP({
+    issuer: 'MundoDosDadosBR',
+    label: ALLOWED_EMAIL,
+    algorithm: 'SHA1',
+    digits: 6,
+    period: 30,
+    secret: secret
+  });
+  return { secret: secret.base32, otpauthUrl: totp.toString() };
+};
+
+export const verifyMfaToken = async (token: string, uid: string, pendingSecret?: string) => {
+  if (localStorage.getItem('nexus_mock_mode')) return true;
+
+  let secretStr = pendingSecret;
+
+  // Se não foi passado um segredo pendente (setup), busca no banco
+  if (!secretStr) {
+    const docRef = db.collection('users').doc(uid).collection('private').doc('mfa');
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
+      secretStr = docSnap.data()?.secret;
+    }
+  }
+
+  if (!secretStr) return false;
+
+  const totp = new OTPAuth.TOTP({
+    issuer: 'MundoDosDadosBR',
+    label: ALLOWED_EMAIL,
+    algorithm: 'SHA1',
+    digits: 6,
+    period: 30,
+    secret: OTPAuth.Secret.fromBase32(secretStr)
+  });
+
+  // Valida com janela de 1 (permite +- 30 segundos de diferença de relógio)
+  return totp.validate({ token, window: 1 }) !== null;
+};
+
+export const saveMfaSecret = async (uid: string, secret: string) => {
+  if (localStorage.getItem('nexus_mock_mode')) return;
+
+  await db.collection('users').doc(uid).collection('private').doc('mfa').set({
+    secret,
+    createdAt: new Date().toISOString()
+  });
+};
+
+export const setUiSession = () => {
+  localStorage.setItem(KEY_UI_SESSION, 'true');
 };
 
 // --- SETTINGS & KEYS ---
