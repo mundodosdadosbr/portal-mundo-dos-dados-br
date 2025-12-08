@@ -7,9 +7,10 @@ const GRAPH_API_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 
 // Helper to get Redirect URI (must match exactly in Meta App Dashboard)
 export const getMetaRedirectUri = () => {
+  // Facebook prefers the origin without trailing slash for App Domains matching
   return window.location.origin.endsWith('/') 
-    ? window.location.origin 
-    : `${window.location.origin}/`;
+    ? window.location.origin.slice(0, -1) 
+    : window.location.origin;
 };
 
 /**

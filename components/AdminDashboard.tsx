@@ -698,10 +698,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                        </div>
                        
                        <div>
-                          <div className="bg-slate-950 p-2 rounded border border-slate-800 mb-2">
-                             <p className="text-[10px] text-slate-500 mb-1 font-bold">Redirect URI para cadastro no Meta App:</p>
-                             <div className="text-[10px] text-indigo-400 font-mono break-all select-all cursor-text">
-                                {getMetaRedirectUri()}
+                          <div className="bg-slate-950 p-3 rounded border border-slate-800 mb-2 space-y-2">
+                             <div>
+                               <p className="text-[10px] text-slate-500 font-bold">1. Adicione este Domínio em 'App Domains':</p>
+                               <div className="text-[10px] text-indigo-300 font-mono select-all cursor-text bg-slate-900 p-1 rounded">
+                                  {window.location.hostname}
+                               </div>
+                             </div>
+                             <div>
+                               <p className="text-[10px] text-slate-500 font-bold">2. Adicione esta URL em 'Valid OAuth Redirect URIs':</p>
+                               <div className="text-[10px] text-indigo-300 font-mono select-all cursor-text bg-slate-900 p-1 rounded break-all">
+                                  {getMetaRedirectUri()}
+                               </div>
                              </div>
                           </div>
                           <button 
