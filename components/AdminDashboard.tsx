@@ -4,7 +4,8 @@ import {
   LayoutDashboard, Settings, RefreshCw, LogOut, Save, Youtube, 
   Instagram, Facebook, Trash2, Plus, Eye, Link2, TikTokIcon,
   TrendingUp, CloudLightning, Users, Bot, FileText, UploadCloud,
-  X, CheckCircle, Lock, Zap, MessageSquare, BookOpen, Video, Clock
+  X, CheckCircle, Lock, Zap, MessageSquare, BookOpen, Video, Clock,
+  AvailableIcons
 } from './Icons';
 import { 
   SocialPost, CreatorProfile, LandingPageContent, Platform, 
@@ -651,8 +652,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                                 <textarea value={feature.description} onChange={(e) => handleUpdateFeature(feature.id, 'description', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white h-20" placeholder="Descrição" />
                                             </div>
                                             <div className="flex flex-col items-center gap-2">
-                                                 <span className="text-xs text-slate-500">Ícone: {feature.icon}</span>
-                                                 <button onClick={() => handleRemoveFeature(feature.id)} className="text-slate-600 hover:text-red-400 bg-slate-900 p-2 rounded"><Trash2 size={16} /></button>
+                                                 <label className="text-xs text-slate-500 mb-1">Ícone</label>
+                                                 <div className="relative w-10 h-10 bg-slate-800 border border-slate-700 rounded-lg flex items-center justify-center hover:border-indigo-500 transition-colors cursor-pointer overflow-hidden group/icon">
+                                                    {(() => {
+                                                        const IconComponent = AvailableIcons[feature.icon] || AvailableIcons['TrendingUp'];
+                                                        return <IconComponent size={20} className="text-indigo-400" />;
+                                                    })()}
+                                                    <select
+                                                        value={feature.icon}
+                                                        onChange={(e) => handleUpdateFeature(feature.id, 'icon', e.target.value)}
+                                                        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                                                        title="Selecione um ícone"
+                                                    >
+                                                        {Object.keys(AvailableIcons).map((iconKey) => (
+                                                            <option key={iconKey} value={iconKey}>
+                                                                {iconKey}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                 </div>
+                                                 <button onClick={() => handleRemoveFeature(feature.id)} className="text-slate-600 hover:text-red-400 bg-slate-900 p-2 rounded mt-2"><Trash2 size={16} /></button>
                                             </div>
                                         </div>
                                     </div>
