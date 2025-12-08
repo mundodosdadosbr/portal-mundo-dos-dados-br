@@ -64,11 +64,14 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
       return new Intl.NumberFormat('pt-BR', { notation: "compact", maximumFractionDigits: 1 }).format(num);
     };
 
-    // 1. Views (Last 30 Days)
+    // Use filteredPosts instead of all posts to respect the active tab
+    const currentPosts = filteredPosts;
+
+    // 1. Views (Last 30 Days) - Based on filtered posts
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    const monthlyViews = posts.reduce((acc, post) => {
+    const monthlyViews = currentPosts.reduce((acc, post) => {
       const postDate = new Date(post.date);
       // Validar data e somar views
       if (!isNaN(postDate.getTime()) && postDate >= thirtyDaysAgo) {
@@ -77,16 +80,16 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
       return acc;
     }, 0);
 
-    // 2. Engagement Rate = (Likes + Comments) / Total Views * 100
-    const totalInteractions = posts.reduce((acc, post) => acc + (post.likes || 0) + (post.comments || 0), 0);
-    const totalViewsAllTime = posts.reduce((acc, post) => acc + (post.views || 0), 0);
+    // 2. Engagement Rate = (Likes + Comments) / Total Views * 100 - Based on filtered posts
+    const totalInteractions = currentPosts.reduce((acc, post) => acc + (post.likes || 0) + (post.comments || 0), 0);
+    const totalViewsAllTime = currentPosts.reduce((acc, post) => acc + (post.views || 0), 0);
     
     const engagementRate = totalViewsAllTime > 0 
       ? ((totalInteractions / totalViewsAllTime) * 100).toFixed(2) 
       : '0.0';
 
-    // 3. Total Posts
-    const totalPosts = posts.length;
+    // 3. Total Posts - Based on filtered posts
+    const totalPosts = currentPosts.length;
 
     return [
       { 
@@ -114,7 +117,7 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
         color: 'text-amber-400' 
       },
     ];
-  }, [posts, profile.subscribers]);
+  }, [filteredPosts, profile.subscribers]); // Dependency changed to filteredPosts
 
 
   const NavButton = ({ label, icon: Icon, tab }: { label: string, icon: any, tab: Platform | 'All' }) => (
@@ -223,7 +226,7 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
           </h2>
           {activeTab === Platform.YOUTUBE && (
              <a 
-               href="https://youtube.com" 
+               href="https://www.youtube.com/channel/UClkSY_UxzYYIwKH2rpTHcDw" 
                target="_blank" 
                rel="noreferrer"
                className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1"

@@ -7,7 +7,7 @@ import {
   CreatorProfile,
   FeatureItem
 } from '../types';
-import { getYouTubePosts } from '../services/youtubeService';
+import { getYouTubePosts, getYouTubeChannelStatistics } from '../services/youtubeService';
 import { getTikTokPosts, getTikTokAuthUrl, DEFAULT_CLIENT_KEY, DEFAULT_CLIENT_SECRET, getRedirectUri } from '../services/tiktokService';
 import { TikTokAuthData, getVirtualFilesCloud, saveVirtualFile, deleteVirtualFile, VirtualFile } from '../services/firebase';
 import { 
@@ -160,8 +160,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsSyncing(true);
     
     try {
+      // 1. Fetch Posts
       const realYoutubePosts = await getYouTubePosts('@MundodosDadosBR', 10, youtubeApiKey);
       
+      // 2. Fetch Channel Statistics (Subscribers)
+      const channelStats = await getYouTubeChannelStatistics('@MundodosDadosBR', youtubeApiKey);
+      if (channelStats && channelStats.subscriberCount) {
+        // Update profile in DB with new subscriber count
+        setProfile({
+          ...profile,
+          subscribers: channelStats.subscriberCount
+        });
+      }
+
       const tiktokPosts = await getTikTokPosts(
         '@mundo.dos.dados5', 
         tiktokAuth.accessToken,
@@ -182,7 +193,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       
       if (dbActions) {
         dbActions.syncPosts(combinedPosts);
-        alert(`Sincronização concluída!\n\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}`);
+        alert(`Sincronização concluída!\n\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nSeguidores atualizados.`);
       } else {
         setPosts((prev: any) => {
           const newItems = [...combinedPosts];
