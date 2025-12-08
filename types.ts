@@ -40,10 +40,17 @@ export interface FeatureItem {
   icon: string;
 }
 
+export interface ChatbotConfig {
+  enabled: boolean;
+  welcomeMessage: string;
+  knowledgeBase: string; // The "NotebookLM" source text
+}
+
 export interface LandingPageContent {
   headline: string;
   subheadline: string;
   ctaButtonText: string;
   logoUrl?: string;
   features: FeatureItem[];
+  chatbotConfig?: ChatbotConfig;
 }

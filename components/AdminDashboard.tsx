@@ -33,7 +33,9 @@ import {
   FileText,
   UploadCloud,
   Save,
-  AvailableIcons
+  AvailableIcons,
+  Bot,
+  MessageSquare
 } from './Icons';
 
 interface AdminDashboardProps {
@@ -57,7 +59,7 @@ interface AdminDashboardProps {
   setTiktokAuth: (data: Partial<TikTokAuthData>) => void;
 }
 
-type AdminView = 'content' | 'integrations' | 'pages' | 'profile' | 'files';
+type AdminView = 'content' | 'integrations' | 'pages' | 'profile' | 'files' | 'chatbot';
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   posts, 
@@ -134,6 +136,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleSaveYoutubeClick = () => {
     setYoutubeApiKey(localYoutubeKey);
     alert('Integração YouTube salva com sucesso!');
+  };
+
+  const handleSaveChatbotClick = () => {
+    // Chatbot config is inside LandingContent for now
+    setLandingContent(localLanding);
+    alert('Configurações do Chatbot salvas com sucesso!');
   };
 
   const handleDelete = (id: string) => {
@@ -349,6 +357,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
              <Link2 size={18} />
              <span>Integrações</span>
           </button>
+          
+          <button 
+            onClick={() => setActiveView('chatbot')}
+            className={`w-full px-4 py-2 flex items-center space-x-3 rounded-lg transition-colors ${activeView === 'chatbot' ? 'bg-indigo-600/20 text-indigo-300' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+          >
+             <Bot size={18} />
+             <span>Chatbot (IA)</span>
+          </button>
 
           <button 
             onClick={() => setActiveView('files')}
@@ -503,6 +519,93 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </>
         )}
         
+        {/* CHATBOT VIEW */}
+        {activeView === 'chatbot' && (
+           <>
+            <header className="h-16 bg-slate-900/50 backdrop-blur border-b border-slate-800 flex items-center justify-between px-6">
+              <h1 className="text-xl font-semibold flex items-center gap-2">
+                 <Bot size={20} className="text-indigo-400" />
+                 <span>Configurar Chatbot IA (Notebook)</span>
+              </h1>
+            </header>
+            <div className="flex-grow overflow-y-auto p-8">
+               <div className="max-w-3xl mx-auto bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
+                 <div className="mb-6">
+                    <h3 className="text-lg font-bold text-white mb-2">Base de Conhecimento (Contexto)</h3>
+                    <p className="text-sm text-slate-400 mb-4">
+                       Cole aqui todo o texto que você quer que o Chatbot "aprenda". Pode ser a transcrição de vídeos, resumo do canal, links importantes ou FAQs. 
+                       O Chatbot usará APENAS este texto para responder os visitantes.
+                    </p>
+                    <textarea 
+                       rows={12}
+                       className="w-full bg-slate-950 border border-slate-700 rounded-lg p-4 text-white text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none font-mono"
+                       placeholder="Ex: O Mundo dos Dados BR foi fundado em 2024... Nossos temas principais são..."
+                       value={localLanding.chatbotConfig?.knowledgeBase || ''}
+                       onChange={(e) => setLocalLanding({
+                          ...localLanding,
+                          chatbotConfig: { 
+                             ...(localLanding.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' }),
+                             knowledgeBase: e.target.value 
+                          }
+                       })}
+                    />
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                       <label className="block text-sm font-medium text-slate-400 mb-2">Mensagem de Boas Vindas</label>
+                       <input 
+                         type="text"
+                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:outline-none"
+                         value={localLanding.chatbotConfig?.welcomeMessage || ''}
+                         onChange={(e) => setLocalLanding({
+                            ...localLanding,
+                            chatbotConfig: { 
+                               ...(localLanding.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' }),
+                               welcomeMessage: e.target.value 
+                            }
+                         })}
+                       />
+                    </div>
+                    <div>
+                       <label className="block text-sm font-medium text-slate-400 mb-2">Status</label>
+                       <div className="flex items-center gap-3 bg-slate-950 p-2 rounded-lg border border-slate-700">
+                          <button 
+                             onClick={() => setLocalLanding({
+                                ...localLanding,
+                                chatbotConfig: { ...(localLanding.chatbotConfig!), enabled: true }
+                             })}
+                             className={`flex-1 py-2 rounded text-sm font-bold ${localLanding.chatbotConfig?.enabled ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:bg-slate-800'}`}
+                          >
+                             Ativado
+                          </button>
+                          <button 
+                             onClick={() => setLocalLanding({
+                                ...localLanding,
+                                chatbotConfig: { ...(localLanding.chatbotConfig!), enabled: false }
+                             })}
+                             className={`flex-1 py-2 rounded text-sm font-bold ${!localLanding.chatbotConfig?.enabled ? 'bg-red-600 text-white' : 'text-slate-500 hover:bg-slate-800'}`}
+                          >
+                             Desativado
+                          </button>
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="pt-6 border-t border-slate-800 flex justify-end">
+                      <button 
+                        onClick={handleSaveChatbotClick}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg flex items-center gap-2"
+                      >
+                        <Save size={18} />
+                        <span>Salvar Chatbot</span>
+                      </button>
+                 </div>
+               </div>
+            </div>
+           </>
+        )}
+
         {/* FILE MANAGER VIEW */}
         {activeView === 'files' && (
           <>

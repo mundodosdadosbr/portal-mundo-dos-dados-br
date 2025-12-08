@@ -38,7 +38,10 @@ import {
   Zap,
   Target,
   Award,
-  BookOpen
+  BookOpen,
+  MessageSquare,
+  Send,
+  Bot
 } from 'lucide-react';
 
 export { 
@@ -79,7 +82,10 @@ export {
   Zap,
   Target,
   Award,
-  BookOpen
+  BookOpen,
+  MessageSquare,
+  Send,
+  Bot
 };
 
 // Custom TikTok icon component
@@ -131,5 +137,7 @@ export const AvailableIcons: Record<string, React.ElementType> = {
   BookOpen,
   Smartphone,
   Lock,
+  MessageSquare,
+  Bot,
   Star: Sparkles // Alias
 };

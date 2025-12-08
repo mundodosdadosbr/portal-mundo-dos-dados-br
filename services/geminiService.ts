@@ -68,3 +68,47 @@ export const suggestVideoTags = async (description: string): Promise<string[]> =
     return ["Dados", "Tech", "Brasil"];
   }
 };
+
+/**
+ * Chat with "Notebook" knowledge base
+ */
+export const chatWithNotebook = async (
+  userMessage: string, 
+  context: string
+): Promise<string> => {
+  if (!apiKey) {
+    return "IA offline: Chave de API não configurada.";
+  }
+
+  try {
+    // NotebookLM Simulation Prompt
+    const systemPrompt = `
+      Você é o assistente virtual oficial do "Mundo dos Dados BR".
+      Sua função é responder perguntas baseando-se ESTRITAMENTE na "Base de Conhecimento" fornecida abaixo.
+      
+      Regras:
+      1. Se a resposta estiver na Base de Conhecimento, responda de forma amigável e direta.
+      2. Se a resposta NÃO estiver na Base de Conhecimento, diga: "Desculpe, não tenho essa informação no meu banco de dados atual sobre o Mundo dos Dados BR."
+      3. Seja conciso e prestativo.
+      4. Fale sempre em Português do Brasil.
+
+      === BASE DE CONHECIMENTO ===
+      ${context}
+      === FIM DA BASE ===
+    `;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: userMessage,
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.3 // Baixa temperatura para ser mais fiel ao texto (Grounding)
+      }
+    });
+
+    return response.text || "Não entendi sua pergunta.";
+  } catch (error) {
+    console.error("Chatbot Error:", error);
+    return "Desculpe, estou com problemas de conexão no momento.";
+  }
+};

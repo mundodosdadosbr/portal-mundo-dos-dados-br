@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { SocialPost, Platform, CreatorProfile, LandingPageContent } from './types';
+import { SocialPost, Platform, CreatorProfile, LandingPageContent, ChatbotConfig } from './types';
 import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
+import { ChatWidget } from './components/ChatWidget';
 import { X, Lock, AlertTriangle, GoogleIcon, Smartphone, ShieldCheck } from './components/Icons';
 import { 
   initFirebase, 
@@ -37,6 +38,12 @@ const INITIAL_PROFILE: CreatorProfile = {
   bio: "Conectando ao banco de dados...",
 };
 
+const INITIAL_CHATBOT: ChatbotConfig = {
+  enabled: true,
+  welcomeMessage: "Olá! Sou a IA do Mundo dos Dados. Pergunte-me sobre nossos conteúdos, estatísticas ou sobre o criador!",
+  knowledgeBase: "O Mundo dos Dados BR é um canal focado em Data Science, Business Intelligence e Tecnologia. Criado por Diego Morais, o canal visa democratizar o acesso ao conhecimento de dados no Brasil. Cobrimos ferramentas como Python, SQL, Power BI e muito mais. Nossas redes sociais incluem YouTube, Instagram e TikTok."
+};
+
 const INITIAL_LANDING_CONTENT: LandingPageContent = {
   headline: "Mundo dos Dados BR",
   subheadline: "Carregando configurações...",
@@ -46,7 +53,8 @@ const INITIAL_LANDING_CONTENT: LandingPageContent = {
     { id: '1', title: "...", description: "...", icon: "TrendingUp" },
     { id: '2', title: "...", description: "...", icon: "CloudLightning" },
     { id: '3', title: "...", description: "...", icon: "Users" }
-  ]
+  ],
+  chatbotConfig: INITIAL_CHATBOT
 };
 
 type ViewState = 'landing' | 'portal' | 'admin';
@@ -251,6 +259,12 @@ const App: React.FC = () => {
          if (!content.features) {
            content.features = INITIAL_LANDING_CONTENT.features;
          }
+         
+         // Ensure chatbot config exists
+         if (!content.chatbotConfig) {
+            content.chatbotConfig = INITIAL_CHATBOT;
+         }
+
          setLandingContent(content);
       }
 
@@ -468,6 +482,11 @@ const App: React.FC = () => {
           onHome={() => setCurrentView('landing')}
           isAuthenticated={isLoggedIn}
         />
+      )}
+
+      {/* Global Chatbot Widget - Visible on Landing & Portal, but hidden in Admin */}
+      {currentView !== 'admin' && landingContent.chatbotConfig && (
+        <ChatWidget config={landingContent.chatbotConfig} />
       )}
 
       {currentView === 'admin' && (
