@@ -313,12 +313,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
      window.open(url, 'TikTok Auth', 'width=600,height=700,status=yes,scrollbars=yes');
   };
 
-  const handleConnectMeta = () => {
+  const handleConnectMeta = (forceRerequest: boolean = false) => {
     if (!metaAuth.appId) {
       alert("Por favor, insira o App ID do Facebook.");
       return;
     }
-    const url = getMetaAuthUrl(metaAuth.appId);
+    const url = getMetaAuthUrl(metaAuth.appId, forceRerequest);
     window.open(url, 'Meta Auth', 'width=600,height=700,status=yes,scrollbars=yes');
   };
 
@@ -740,7 +740,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 {isDebugLoading ? <RefreshCw className="animate-spin" size={16} /> : <Zap size={16} />}
                              </button>
                              <button 
-                                onClick={() => isMetaConnected ? handleDisconnect(Platform.FACEBOOK) : handleConnectMeta()}
+                                onClick={() => handleConnectMeta(true)} // Force Rerequest
+                                disabled={!metaAuth.appId}
+                                className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-3 rounded-lg flex items-center justify-center transition-colors text-xs font-bold"
+                                title="Re-autorizar Permissões (Correção)"
+                              >
+                                Re-autorizar
+                             </button>
+                             <button 
+                                onClick={() => isMetaConnected ? handleDisconnect(Platform.FACEBOOK) : handleConnectMeta(false)}
                                 className={`flex-grow py-2 rounded-lg text-sm font-medium transition-colors border ${isMetaConnected ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-blue-600 hover:bg-blue-500 text-white border-blue-600'}`}
                               >
                                 {isMetaConnected ? 'Desconectar Meta' : 'Conectar (Pop-up)'}
