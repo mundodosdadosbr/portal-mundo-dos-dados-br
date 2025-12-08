@@ -1,15 +1,21 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Settings, RefreshCw, LogOut, Save, Youtube, 
   Instagram, Facebook, Trash2, Plus, Eye, Link2, TikTokIcon,
-  TrendingUp, CloudLightning, Users, Bot
+  TrendingUp, CloudLightning, Users, Bot, FileText, UploadCloud,
+  X, CheckCircle, Lock, Zap, MessageSquare, BookOpen, Video
 } from './Icons';
-import { SocialPost, CreatorProfile, LandingPageContent, Platform, TikTokAuthData, MetaAuthData } from '../types';
+import { 
+  SocialPost, CreatorProfile, LandingPageContent, Platform, 
+  TikTokAuthData, MetaAuthData, FeatureItem 
+} from '../types';
 import { getYouTubePosts, getYouTubeChannelStatistics } from '../services/youtubeService';
 import { 
   getTikTokPosts, 
   getTikTokAuthUrl, 
   getTikTokUserStats,
+  exchangeTikTokCode,
   DEFAULT_CLIENT_KEY, 
   DEFAULT_CLIENT_SECRET 
 } from '../services/tiktokService';
@@ -20,6 +26,12 @@ import {
   getMetaPlatformStats,
   debugMetaConnection 
 } from '../services/metaService';
+import { 
+  getVirtualFilesCloud, 
+  saveVirtualFile, 
+  deleteVirtualFile, 
+  VirtualFile 
+} from '../services/firebase';
 
 interface AdminDashboardProps {
   posts: SocialPost[];
@@ -44,15 +56,84 @@ interface AdminDashboardProps {
   setMetaAuth: (auth: Partial<MetaAuthData>) => void;
 }
 
+type AdminView = 'dashboard' | 'posts' | 'content' | 'integrations' | 'pages' | 'files' | 'chatbot';
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   posts, setPosts, dbActions, onLogout, onViewPortal,
   landingContent, setLandingContent, profile, setProfile,
   youtubeApiKey, setYoutubeApiKey, tiktokAuth, setTiktokAuth, metaAuth, setMetaAuth
 }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'posts' | 'content' | 'integrations'>('dashboard');
+  const [activeTab, setActiveTab] = useState<AdminView>('dashboard');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
-  // Helper for inputs
+  // File System State
+  const [virtualFiles, setVirtualFiles] = useState<VirtualFile[]>([]);
+  const [newFile, setNewFile] = useState({ path: '', content: '' });
+
+  // Load files when tab changes
+  useEffect(() => {
+    if (activeTab === 'files') {
+      getVirtualFilesCloud().then(setVirtualFiles);
+    }
+  }, [activeTab]);
+
+  // --- POPUP LISTENER FOR AUTH ---
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      // Security check: ensure message comes from same origin
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data.type === 'TIKTOK_CODE') {
+         setIsConnecting(true);
+         const code = event.data.code;
+         const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
+         const secret = tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET;
+         
+         try {
+            const tokens = await exchangeTikTokCode(code, key, secret);
+            setTiktokAuth({
+              accessToken: tokens.accessToken,
+              refreshToken: tokens.refreshToken,
+              expiresAt: Date.now() + (tokens.expiresIn * 1000)
+            });
+            alert("TikTok conectado com sucesso via Pop-up!");
+         } catch (e: any) {
+            console.error(e);
+            alert(`Erro ao conectar TikTok: ${e.message}`);
+         } finally {
+            setIsConnecting(false);
+         }
+      }
+
+      if (event.data.type === 'META_TOKEN') {
+         // Parse the hash sent from popup
+         // format: #access_token=...&expires_in=...
+         try {
+            const hash = event.data.hash.substring(1); // remove #
+            const params = new URLSearchParams(hash);
+            const accessToken = params.get('access_token');
+            const expiresIn = params.get('expires_in');
+            
+            if (accessToken) {
+               const expiry = expiresIn ? Date.now() + (parseInt(expiresIn) * 1000) : Date.now() + (3600 * 1000);
+               setMetaAuth({
+                 accessToken,
+                 expiresAt: expiry
+               });
+               alert("Meta (Facebook/Instagram) conectado com sucesso via Pop-up!");
+            }
+         } catch (e) {
+            console.error(e);
+         }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [tiktokAuth, setTiktokAuth, setMetaAuth]);
+
+  // --- HELPERS ---
   const handleProfileChange = (field: keyof CreatorProfile, value: any) => {
     setProfile({ ...profile, [field]: value });
   };
@@ -61,15 +142,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setLandingContent({ ...landingContent, [field]: value });
   };
 
-  // Sync Logic
+  // --- CMS FEATURES LOGIC ---
+  const handleAddFeature = () => {
+    const newFeature: FeatureItem = { 
+        id: Date.now().toString(), 
+        title: 'Nova Seção', 
+        description: 'Descrição do recurso...', 
+        icon: 'Star' 
+    };
+    const currentFeatures = landingContent.features || [];
+    setLandingContent({ ...landingContent, features: [...currentFeatures, newFeature] });
+  };
+
+  const handleRemoveFeature = (id: string) => {
+    const currentFeatures = landingContent.features || [];
+    setLandingContent({ ...landingContent, features: currentFeatures.filter(f => f.id !== id) });
+  };
+
+  const handleUpdateFeature = (id: string, field: keyof FeatureItem, value: string) => {
+    const currentFeatures = landingContent.features || [];
+    setLandingContent({ 
+        ...landingContent, 
+        features: currentFeatures.map(f => f.id === id ? { ...f, [field]: value } : f) 
+    });
+  };
+
+  // --- SYNC LOGIC ---
   const handleSync = async () => {
     setIsSyncing(true);
     
+    // Preserve existing stats if fetch fails, or init 0
     const newStats = {
-      youtubeFollowers: 0,
-      instagramFollowers: 0,
-      tiktokFollowers: 0,
-      facebookFollowers: 0
+      youtubeFollowers: profile.platformStats?.youtubeFollowers || 0,
+      instagramFollowers: profile.platformStats?.instagramFollowers || 0,
+      tiktokFollowers: profile.platformStats?.tiktokFollowers || 0,
+      facebookFollowers: profile.platformStats?.facebookFollowers || 0
     };
 
     try {
@@ -96,7 +203,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (tiktokAuth.accessToken) {
         try {
             const ttStats = await getTikTokUserStats(tiktokAuth.accessToken);
-            newStats.tiktokFollowers = ttStats.followers;
+            if (ttStats.followers > 0) newStats.tiktokFollowers = ttStats.followers;
 
             tiktokPosts = await getTikTokPosts(
             '@mundo.dos.dados5', 
@@ -124,8 +231,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (metaAuth.accessToken) {
         try {
           const metaStats = await getMetaPlatformStats(metaAuth.accessToken);
-          newStats.instagramFollowers = metaStats.instagram;
-          newStats.facebookFollowers = metaStats.facebook;
+          if (metaStats.instagram > 0) newStats.instagramFollowers = metaStats.instagram;
+          if (metaStats.facebook > 0) newStats.facebookFollowers = metaStats.facebook;
 
           igPosts = await getInstagramPosts(metaAuth.accessToken);
           fbPosts = await getFacebookPosts(metaAuth.accessToken);
@@ -171,12 +278,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // --- POPUP TRIGGERS ---
   const startTikTokAuth = () => {
-     window.location.href = getTikTokAuthUrl(tiktokAuth.clientKey || DEFAULT_CLIENT_KEY);
+     const url = getTikTokAuthUrl(tiktokAuth.clientKey || DEFAULT_CLIENT_KEY);
+     window.open(url, 'TikTok Auth', 'width=600,height=700,status=yes,scrollbars=yes');
   };
 
   const startMetaAuth = () => {
-     window.location.href = getMetaAuthUrl(metaAuth.appId || '1146266013233342'); // ID fallback
+     const url = getMetaAuthUrl(metaAuth.appId || '1146266013233342'); // ID fallback
+     window.open(url, 'Meta Auth', 'width=600,height=700,status=yes,scrollbars=yes');
+  };
+
+  // --- FILE HANDLERS ---
+  const handleSaveFile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFile.path || !newFile.content) return;
+    await saveVirtualFile({ ...newFile, type: 'text/plain' });
+    const files = await getVirtualFilesCloud();
+    setVirtualFiles(files);
+    setNewFile({ path: '', content: '' });
+  };
+  const handleDeleteFile = async (path: string) => {
+    await deleteVirtualFile(path);
+    const files = await getVirtualFilesCloud();
+    setVirtualFiles(files);
   };
 
   return (
@@ -189,43 +314,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     Admin
                 </h2>
             </div>
-            <nav className="flex-grow p-4 space-y-2">
-                <button 
-                    onClick={() => setActiveTab('dashboard')}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
-                >
+            <nav className="flex-grow p-4 space-y-2 overflow-y-auto">
+                <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
                     <LayoutDashboard size={20} /> Dashboard
                 </button>
-                <button 
-                    onClick={() => setActiveTab('integrations')}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'integrations' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
-                >
+                <button onClick={() => setActiveTab('integrations')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'integrations' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
                     <RefreshCw size={20} /> Integrações
                 </button>
-                <button 
-                    onClick={() => setActiveTab('content')}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'content' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
-                >
-                    <Settings size={20} /> Conteúdo & Perfil
+                <button onClick={() => setActiveTab('content')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'content' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                    <Users size={20} /> Perfil
                 </button>
-                <button 
-                    onClick={() => setActiveTab('posts')}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'posts' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
-                >
+                <button onClick={() => setActiveTab('pages')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'pages' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                    <Video size={20} /> Páginas (CMS)
+                </button>
+                <button onClick={() => setActiveTab('posts')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'posts' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
                     <Eye size={20} /> Posts ({posts.length})
                 </button>
+                <button onClick={() => setActiveTab('chatbot')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'chatbot' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                    <Bot size={20} /> Chatbot IA
+                </button>
+                <button onClick={() => setActiveTab('files')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'files' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                    <FileText size={20} /> Arquivos
+                </button>
             </nav>
-            <div className="p-4 border-t border-slate-800 space-y-2">
-                <button 
-                    onClick={onViewPortal}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-white transition-colors"
-                >
+            <div className="p-4 border-t border-slate-800 space-y-2 bg-slate-900">
+                <button onClick={onViewPortal} className="w-full flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-white transition-colors">
                     <Eye size={18} /> Ver Portal
                 </button>
-                <button 
-                    onClick={onLogout}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-red-400 hover:text-red-300 transition-colors"
-                >
+                <button onClick={onLogout} className="w-full flex items-center gap-2 px-4 py-2 text-red-400 hover:text-red-300 transition-colors">
                     <LogOut size={18} /> Sair
                 </button>
             </div>
@@ -332,7 +448,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 onClick={startTikTokAuth}
                                 className="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2 rounded-lg text-sm font-bold"
                              >
-                                {tiktokAuth.accessToken ? "Reconectar TikTok" : "Conectar TikTok"}
+                                {tiktokAuth.accessToken ? "Reconectar TikTok (Pop-up)" : "Conectar TikTok (Pop-up)"}
                              </button>
                         </div>
                      </div>
@@ -366,7 +482,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 onClick={startMetaAuth}
                                 className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold"
                              >
-                                {metaAuth.accessToken ? "Reconectar Meta" : "Conectar Meta"}
+                                {metaAuth.accessToken ? "Reconectar Meta (Pop-up)" : "Conectar Meta (Pop-up)"}
                              </button>
                         </div>
                         {metaAuth.accessToken && (
@@ -386,13 +502,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {activeTab === 'content' && (
                 <div className="max-w-4xl space-y-8">
-                    <h1 className="text-3xl font-bold">Perfil & Conteúdo</h1>
-                    
-                    {/* Profile */}
+                    <h1 className="text-3xl font-bold">Perfil do Criador</h1>
                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                             <Users size={20} className="text-indigo-400" /> Perfil do Criador
-                        </h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label className="text-sm text-slate-400">Nome de Exibição</label>
@@ -411,9 +522,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <textarea value={profile.bio} onChange={(e) => handleProfileChange('bio', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-20" />
                             </div>
                         </div>
+                        <div className="mt-4 flex justify-end">
+                             <button onClick={() => setProfile(profile)} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2"><Save size={18} /> <span>Salvar Perfil</span></button>
+                        </div>
                     </div>
+                </div>
+            )}
 
-                    {/* Landing Page */}
+            {activeTab === 'pages' && (
+                <div className="max-w-4xl space-y-8">
+                    <h1 className="text-3xl font-bold">Páginas (CMS)</h1>
                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
                         <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                              <LayoutDashboard size={20} className="text-indigo-400" /> Landing Page
@@ -431,60 +549,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <label className="text-sm text-slate-400">Texto do Botão CTA</label>
                                 <input type="text" value={landingContent.ctaButtonText} onChange={(e) => handleLandingChange('ctaButtonText', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
                             </div>
-                        </div>
-                    </div>
-
-                     {/* Chatbot Config */}
-                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                             <Bot size={20} className="text-indigo-400" /> Configuração do Chatbot (Gemini)
-                        </h2>
-                         <div className="space-y-4">
-                            <div className="flex items-center gap-3">
-                                <input 
-                                    type="checkbox" 
-                                    checked={landingContent.chatbotConfig?.enabled ?? true} 
-                                    onChange={(e) => {
-                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
-                                        setLandingContent({ 
-                                            ...landingContent, 
-                                            chatbotConfig: { ...cfg, enabled: e.target.checked }
-                                        });
-                                    }}
-                                    className="w-5 h-5 rounded border-slate-700 bg-slate-950"
-                                />
-                                <span className="text-white">Ativar Chatbot</span>
-                            </div>
                             <div>
-                                <label className="text-sm text-slate-400">Mensagem de Boas-vindas</label>
-                                <input 
-                                    type="text" 
-                                    value={landingContent.chatbotConfig?.welcomeMessage || ''} 
-                                    onChange={(e) => {
-                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
-                                        setLandingContent({ 
-                                            ...landingContent, 
-                                            chatbotConfig: { ...cfg, welcomeMessage: e.target.value }
-                                        });
-                                    }} 
-                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" 
-                                />
+                                <label className="text-sm text-slate-400">Logo URL (Opcional)</label>
+                                <input type="text" value={landingContent.logoUrl || ''} onChange={(e) => handleLandingChange('logoUrl', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
                             </div>
-                             <div>
-                                <label className="text-sm text-slate-400">Base de Conhecimento (Contexto para IA)</label>
-                                <textarea 
-                                    value={landingContent.chatbotConfig?.knowledgeBase || ''} 
-                                    onChange={(e) => {
-                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
-                                        setLandingContent({ 
-                                            ...landingContent, 
-                                            chatbotConfig: { ...cfg, knowledgeBase: e.target.value }
-                                        });
-                                    }} 
-                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-32" 
-                                    placeholder="Cole aqui informações sobre seu canal, links importantes, biografia, etc."
-                                />
+
+                            <div className="pt-6 border-t border-slate-800">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="font-semibold text-white">Seções de Recursos</h3>
+                                    <button onClick={handleAddFeature} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded flex items-center gap-1"><Plus size={14} /> Adicionar</button>
+                                </div>
+                                <div className="space-y-4">
+                                    {landingContent.features && landingContent.features.map((feature) => (
+                                    <div key={feature.id} className="bg-slate-950 border border-slate-700 rounded-lg p-4 relative group">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div className="flex-grow mr-4">
+                                                <input type="text" value={feature.title} onChange={(e) => handleUpdateFeature(feature.id, 'title', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white mb-2" placeholder="Título" />
+                                                <textarea value={feature.description} onChange={(e) => handleUpdateFeature(feature.id, 'description', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white h-20" placeholder="Descrição" />
+                                            </div>
+                                            <div className="flex flex-col items-center gap-2">
+                                                 <span className="text-xs text-slate-500">Ícone: {feature.icon}</span>
+                                                 <button onClick={() => handleRemoveFeature(feature.id)} className="text-slate-600 hover:text-red-400 bg-slate-900 p-2 rounded"><Trash2 size={16} /></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    ))}
+                                </div>
                             </div>
+                        </div>
+                        <div className="mt-6 flex justify-end">
+                             <button onClick={() => setLandingContent(landingContent)} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2"><Save size={18} /> <span>Salvar Página</span></button>
                         </div>
                     </div>
                 </div>
@@ -558,6 +652,93 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </tbody>
                         </table>
                      </div>
+                </div>
+            )}
+
+            {activeTab === 'chatbot' && (
+                <div className="max-w-3xl mx-auto space-y-8">
+                     <h1 className="text-3xl font-bold">Configuração do Chatbot (IA)</h1>
+                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                         <div className="space-y-4">
+                            <div className="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    checked={landingContent.chatbotConfig?.enabled ?? true} 
+                                    onChange={(e) => {
+                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
+                                        setLandingContent({ 
+                                            ...landingContent, 
+                                            chatbotConfig: { ...cfg, enabled: e.target.checked }
+                                        });
+                                    }}
+                                    className="w-5 h-5 rounded border-slate-700 bg-slate-950"
+                                />
+                                <span className="text-white">Ativar Chatbot</span>
+                            </div>
+                            <div>
+                                <label className="text-sm text-slate-400">Mensagem de Boas-vindas</label>
+                                <input 
+                                    type="text" 
+                                    value={landingContent.chatbotConfig?.welcomeMessage || ''} 
+                                    onChange={(e) => {
+                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
+                                        setLandingContent({ 
+                                            ...landingContent, 
+                                            chatbotConfig: { ...cfg, welcomeMessage: e.target.value }
+                                        });
+                                    }} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" 
+                                />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Base de Conhecimento (Contexto para IA)</label>
+                                <textarea 
+                                    value={landingContent.chatbotConfig?.knowledgeBase || ''} 
+                                    onChange={(e) => {
+                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
+                                        setLandingContent({ 
+                                            ...landingContent, 
+                                            chatbotConfig: { ...cfg, knowledgeBase: e.target.value }
+                                        });
+                                    }} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-64 font-mono text-sm" 
+                                    placeholder="Cole aqui informações sobre seu canal, links importantes, biografia, etc."
+                                />
+                            </div>
+                            <div className="flex justify-end pt-4">
+                                <button onClick={() => setLandingContent(landingContent)} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2"><Save size={18} /> <span>Salvar IA</span></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'files' && (
+                <div className="space-y-6">
+                    <h1 className="text-3xl font-bold">Arquivos & DNS</h1>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-6 h-fit">
+                            <h3 className="font-bold text-white mb-4 flex items-center gap-2"><UploadCloud size={20} /> Adicionar Arquivo</h3>
+                            <form onSubmit={handleSaveFile} className="space-y-4">
+                                <input type="text" value={newFile.path} onChange={(e) => setNewFile({...newFile, path: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" placeholder="ex: ads.txt" required />
+                                <textarea rows={8} value={newFile.content} onChange={(e) => setNewFile({...newFile, content: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white font-mono text-xs" required />
+                                <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg flex items-center justify-center space-x-2"><Plus size={18} /> <span>Salvar</span></button>
+                            </form>
+                        </div>
+                        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden h-fit">
+                            <div className="p-4 border-b border-slate-800 bg-slate-800/30"><h3 className="font-bold text-white">Arquivos Hospedados</h3></div>
+                            <div className="divide-y divide-slate-800">
+                                {virtualFiles.map((file, idx) => (
+                                <div key={idx} className="p-4 flex items-start justify-between hover:bg-slate-800/30 transition-colors">
+                                    <div className="overflow-hidden mr-4">
+                                        <div className="flex items-center gap-2 mb-1"><FileText size={16} /><span className="font-mono font-bold text-white truncate">/{file.path}</span></div>
+                                    </div>
+                                    <button onClick={() => handleDeleteFile(file.path)} className="text-slate-500 hover:text-red-400 p-2"><Trash2 size={18} /></button>
+                                </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </main>
