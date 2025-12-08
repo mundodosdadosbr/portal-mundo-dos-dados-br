@@ -1,18 +1,13 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SocialPost, Platform, CreatorProfile, LandingPageContent } from './types';
 import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
-import { Captcha } from './components/Captcha';
-import { X, Lock, Smartphone, CheckCircle, AlertTriangle, CloudLightning, ShieldCheck, QrCode, FileText } from './components/Icons';
+import { X, Lock, AlertTriangle, GoogleIcon } from './components/Icons';
 import { 
   initFirebase, 
-  loginWithCredentials, 
-  checkMfaStatus, 
-  initiateMfaSetup, 
-  verifyMfaToken, 
-  completeMfaSetup, 
+  loginWithGoogle,
   logout, 
   subscribeToSettings, 
   subscribeToPosts, 
@@ -51,7 +46,6 @@ const INITIAL_LANDING_CONTENT: LandingPageContent = {
 };
 
 type ViewState = 'landing' | 'portal' | 'admin';
-type LoginStep = 'credentials' | 'mfa-setup' | 'mfa-verify';
 
 // --- VIRTUAL FILE RENDERER (RAW TEXT) ---
 const RawTextRenderer = ({ content }: { content: string }) => {
@@ -172,24 +166,9 @@ const App: React.FC = () => {
 
   // Login Modal State
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [loginStep, setLoginStep] = useState<LoginStep>('credentials');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  
-  // Auth Form State
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [mfaCode, setMfaCode] = useState('');
   const [loginError, setLoginError] = useState('');
   
-  // Captcha State
-  const [generatedCaptcha, setGeneratedCaptcha] = useState('');
-  const [captchaInput, setCaptchaInput] = useState('');
-  const [captchaKey, setCaptchaKey] = useState(0); 
-  
-  // MFA Setup State
-  const [mfaSecret, setMfaSecret] = useState('');
-  const [mfaQrUrl, setMfaQrUrl] = useState('');
-
   // Auth State
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
@@ -347,12 +326,6 @@ const App: React.FC = () => {
     }
     setIsLoginModalOpen(true);
     setLoginError('');
-    setUsername('');
-    setPassword('');
-    setMfaCode('');
-    setCaptchaInput('');
-    setLoginStep('credentials');
-    setCaptchaKey(prev => prev + 1);
   };
 
   const handleLogout = async () => {
@@ -361,85 +334,17 @@ const App: React.FC = () => {
     setCurrentView('landing');
   };
 
-  const handleCaptchaGenerate = useCallback((code: string) => {
-    setGeneratedCaptcha(code);
-  }, []);
-
-  const handleCredentialsSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGoogleLogin = async () => {
     setIsAuthenticating(true);
     setLoginError('');
-
-    if (captchaInput.toUpperCase() !== generatedCaptcha) {
-      setLoginError('Código Captcha incorreto.');
-      setIsAuthenticating(false);
-      setCaptchaKey(prev => prev + 1);
-      setCaptchaInput('');
-      return;
-    }
-
     try {
-      await loginWithCredentials(username, password);
-      
-      const hasMfa = await checkMfaStatus();
-      
-      if (hasMfa) {
-        setLoginStep('mfa-verify');
-      } else {
-        const { secret, otpauthUrl } = await initiateMfaSetup();
-        setMfaSecret(secret);
-        setMfaQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(otpauthUrl)}`);
-        setLoginStep('mfa-setup');
-      }
+      await loginWithGoogle();
+      setIsLoggedIn(true);
+      setCurrentView('admin');
+      setIsLoginModalOpen(false);
     } catch (error: any) {
       console.error(error);
-      setLoginError(error.message || "Falha na autenticação.");
-      setCaptchaKey(prev => prev + 1);
-      setCaptchaInput('');
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
-
-  const handleMfaVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsAuthenticating(true);
-    setLoginError('');
-
-    try {
-      const isValid = await verifyMfaToken(mfaCode);
-      if (isValid) {
-        setIsLoggedIn(true);
-        setCurrentView('admin');
-        setIsLoginModalOpen(false);
-      } else {
-        setLoginError("Código inválido. Tente novamente.");
-        setMfaCode('');
-      }
-    } catch (error) {
-      setLoginError("Erro ao verificar código.");
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
-
-  const handleMfaSetupComplete = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsAuthenticating(true);
-    setLoginError('');
-
-    try {
-      const isValid = await verifyMfaToken(mfaCode, mfaSecret);
-      if (isValid) {
-        await completeMfaSetup(mfaSecret);
-        setIsLoggedIn(true);
-        setCurrentView('admin');
-        setIsLoginModalOpen(false);
-      } else {
-        setLoginError("Código incorreto. Verifique o Google Authenticator.");
-      }
-    } catch (error) {
-       setLoginError("Erro ao configurar MFA.");
+      setLoginError(error.message || "Falha ao conectar com Google.");
     } finally {
       setIsAuthenticating(false);
     }
@@ -510,178 +415,56 @@ const App: React.FC = () => {
 
       {/* Login / Auth Modal */}
       {isLoginModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm">
-          <div className="bg-slate-900 w-full max-w-md rounded-2xl border border-slate-700 shadow-2xl p-6 relative overflow-hidden">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 w-full max-w-sm rounded-2xl border border-slate-700 shadow-2xl p-8 relative overflow-hidden">
             
-            <div className="flex justify-between items-center mb-6 relative z-10">
+            <div className="flex justify-between items-center mb-8 relative z-10">
               <h3 className="text-xl font-bold flex items-center gap-2">
                  <Lock size={20} className="text-indigo-400" />
-                 <span>Acesso Administrativo</span>
+                 <span>Acesso Admin</span>
               </h3>
               <button 
                 onClick={() => setIsLoginModalOpen(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white transition-colors"
               >
                 <X size={20} />
               </button>
             </div>
 
             {loginError && (
-              <div className="mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm p-3 rounded-lg flex items-center gap-2 animate-pulse">
+              <div className="mb-6 bg-red-500/10 border border-red-500/20 text-red-400 text-sm p-4 rounded-lg flex items-center gap-2">
                 <AlertTriangle size={16} />
                 {loginError}
               </div>
             )}
 
-            {/* STEP 1: USERNAME, PASSWORD & CAPTCHA */}
-            {loginStep === 'credentials' && (
-              <form onSubmit={handleCredentialsSubmit} className="space-y-4 animate-fade-in">
-                <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-1">Usuário</label>
-                  <input 
-                    type="text" 
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-indigo-500 focus:outline-none"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="seu.usuario"
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-1">Senha</label>
-                  <input 
-                    type="password" 
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-indigo-500 focus:outline-none"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Sua senha segura"
-                  />
-                </div>
-                
-                {/* CAPTCHA SECTION */}
-                <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">Verificação de Segurança</label>
-                  <div className="flex flex-col gap-3">
-                    <Captcha 
-                      key={captchaKey} 
-                      onGenerate={handleCaptchaGenerate} 
-                    />
-                    <input 
-                      type="text"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-indigo-500 focus:outline-none uppercase tracking-widest font-mono"
-                      value={captchaInput}
-                      onChange={(e) => setCaptchaInput(e.target.value)}
-                      placeholder="DIGITE O CÓDIGO"
-                      maxLength={6}
-                      required
-                    />
-                  </div>
-                </div>
+            <div className="space-y-4">
+              <p className="text-slate-400 text-sm text-center mb-6">
+                Faça login com sua conta Google para gerenciar o conteúdo do portal.
+              </p>
+              
+              <button 
+                onClick={handleGoogleLogin}
+                disabled={isAuthenticating}
+                className="w-full bg-white hover:bg-slate-100 text-slate-900 font-bold py-3 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed group"
+              >
+                {isAuthenticating ? (
+                  <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-800 rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <GoogleIcon />
+                    <span>Entrar com Google</span>
+                  </>
+                )}
+              </button>
+            </div>
+            
+            <div className="mt-8 pt-6 border-t border-slate-800 text-center">
+               <p className="text-xs text-slate-600">
+                 Acesso protegido e monitorado.
+               </p>
+            </div>
 
-                <button 
-                  type="submit"
-                  disabled={isAuthenticating}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed mt-4"
-                >
-                  {isAuthenticating ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <span>Próximo</span>
-                    </>
-                  )}
-                </button>
-              </form>
-            )}
-
-            {/* STEP 2: MFA SETUP */}
-            {loginStep === 'mfa-setup' && (
-              <div className="animate-fade-in">
-                <div className="text-center mb-4">
-                  <div className="bg-white p-2 rounded-xl inline-block mb-3">
-                    {mfaQrUrl ? (
-                      <img src={mfaQrUrl} alt="QR Code" className="w-40 h-40" />
-                    ) : (
-                      <div className="w-40 h-40 bg-slate-200 flex items-center justify-center text-slate-400">
-                        <div className="w-8 h-8 border-2 border-slate-400 border-t-slate-600 rounded-full animate-spin" />
-                      </div>
-                    )}
-                  </div>
-                  <h4 className="font-bold text-white mb-1">Configurar Google Authenticator</h4>
-                  <p className="text-sm text-slate-400 px-4">
-                    Escaneie o QR Code com seu app autenticador e digite o código gerado abaixo.
-                  </p>
-                </div>
-
-                <form onSubmit={handleMfaSetupComplete} className="space-y-4">
-                  <input 
-                    type="text" 
-                    className="w-full bg-slate-950 border border-indigo-500/50 rounded-lg p-3 text-center text-2xl tracking-[0.5em] font-mono text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 transition-all placeholder:tracking-normal placeholder:text-sm placeholder:font-sans"
-                    value={mfaCode}
-                    onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="000000"
-                    autoFocus
-                  />
-                  <button 
-                    type="submit"
-                    disabled={isAuthenticating || mfaCode.length !== 6}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isAuthenticating ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <ShieldCheck size={18} />
-                        <span>Verificar e Ativar</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* STEP 3: MFA VERIFY */}
-            {loginStep === 'mfa-verify' && (
-              <div className="animate-fade-in">
-                <div className="text-center mb-6">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-500/10 text-indigo-400 mb-4 ring-1 ring-indigo-500/30">
-                      <Smartphone size={32} />
-                  </div>
-                  <h4 className="text-xl font-bold text-white">Autenticação de Dois Fatores</h4>
-                  <p className="text-slate-400 text-sm mt-2">
-                     Digite o código de 6 dígitos do seu Google Authenticator.
-                  </p>
-                </div>
-
-                <form onSubmit={handleMfaVerify} className="space-y-4">
-                  <input 
-                    type="text" 
-                    className="w-full bg-slate-950 border border-indigo-500/50 rounded-lg p-3 text-center text-2xl tracking-[0.5em] font-mono text-white focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 transition-all placeholder:tracking-normal placeholder:text-sm placeholder:font-sans"
-                    value={mfaCode}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                      setMfaCode(val);
-                    }}
-                    placeholder="000000"
-                    autoFocus
-                  />
-                  
-                  <button 
-                    type="submit"
-                    disabled={isAuthenticating || mfaCode.length !== 6}
-                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-all mt-2 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                     {isAuthenticating ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <span>Confirmar Acesso</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-              </div>
-            )}
           </div>
         </div>
       )}
