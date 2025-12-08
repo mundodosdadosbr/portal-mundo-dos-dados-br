@@ -42,7 +42,8 @@ import {
   MessageSquare,
   Send,
   Bot,
-  Settings
+  Settings,
+  Clock
 } from 'lucide-react';
 
 export { 
@@ -87,7 +88,8 @@ export {
   MessageSquare,
   Send,
   Bot,
-  Settings
+  Settings,
+  Clock
 };
 
 // Custom TikTok icon component

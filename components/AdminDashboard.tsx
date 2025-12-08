@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, Settings, RefreshCw, LogOut, Save, Youtube, 
   Instagram, Facebook, Trash2, Plus, Eye, Link2, TikTokIcon,
   TrendingUp, CloudLightning, Users, Bot, FileText, UploadCloud,
-  X, CheckCircle, Lock, Zap, MessageSquare, BookOpen, Video
+  X, CheckCircle, Lock, Zap, MessageSquare, BookOpen, Video, Clock
 } from './Icons';
 import { 
   SocialPost, CreatorProfile, LandingPageContent, Platform, 
@@ -66,6 +66,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<AdminView>('dashboard');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   // File System State
   const [virtualFiles, setVirtualFiles] = useState<VirtualFile[]>([]);
@@ -168,7 +169,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // --- SYNC LOGIC ---
-  const handleSync = async () => {
+  const handleSync = async (isAuto = false) => {
+    if (isSyncing) return;
     setIsSyncing(true);
     
     // Preserve existing stats if fetch fails, or init 0
@@ -264,19 +266,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       
       if (dbActions) {
         dbActions.syncPosts(combinedPosts);
-        let msg = `Sincronização concluída!\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nInstagram: ${igPosts.length}\nFacebook: ${fbPosts.length}`;
-        alert(msg);
+        
+        setLastSyncTime(new Date());
+
+        if (!isAuto) {
+            let msg = `Sincronização concluída!\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nInstagram: ${igPosts.length}\nFacebook: ${fbPosts.length}`;
+            alert(msg);
+        }
       } else {
         setPosts(combinedPosts);
       }
 
     } catch (error: any) {
       console.error(error);
-      alert(`Erro na sincronização: ${error.message}`);
+      if (!isAuto) alert(`Erro na sincronização: ${error.message}`);
     } finally {
       setIsSyncing(false);
     }
   };
+
+  // --- AUTO SYNC (1 HOUR) ---
+  // Use a ref to keep the latest handleSync without breaking the interval
+  const handleSyncRef = useRef(handleSync);
+  useEffect(() => {
+    handleSyncRef.current = handleSync;
+  }, [handleSync]);
+
+  useEffect(() => {
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    
+    const intervalId = setInterval(() => {
+        console.log("⏰ Executing Auto-Sync...");
+        if (handleSyncRef.current) {
+            handleSyncRef.current(true); // Pass true for isAuto
+        }
+    }, ONE_HOUR_MS);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
 
   // --- POPUP TRIGGERS ---
   const startTikTokAuth = () => {
@@ -284,9 +312,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
      window.open(url, 'TikTok Auth', 'width=600,height=700,status=yes,scrollbars=yes');
   };
 
-  const startMetaAuth = () => {
-     const url = getMetaAuthUrl(metaAuth.appId || '1146266013233342'); // ID fallback
+  const startMetaAuth = (forceRerequest = false) => {
+     const url = getMetaAuthUrl(metaAuth.appId || '1146266013233342', forceRerequest); 
      window.open(url, 'Meta Auth', 'width=600,height=700,status=yes,scrollbars=yes');
+  };
+
+  const handleResetMeta = () => {
+    if (confirm("Isso abrirá a página do Facebook para você remover o aplicativo 'CreatorNexus' (ou similar) manualmente. Depois, tente conectar novamente selecionando todas as páginas.\n\nDeseja continuar?")) {
+        window.open('https://www.facebook.com/settings?tab=business_tools', '_blank');
+    }
+  };
+
+  const handleDebugMeta = async () => {
+    if (!metaAuth.accessToken) return;
+    const logs = await debugMetaConnection(metaAuth.accessToken);
+    
+    // Create a simple modal or alert with logs
+    const logString = logs.join('\n');
+    
+    // Check for critical "Page not found" error to suggest reset
+    if (logString.includes("ALERTA CRÍTICO") || logString.includes("0 páginas")) {
+        if(confirm(`DIAGNÓSTICO:\n${logString}\n\nO sistema detectou um problema de permissão. Deseja abrir o guia de reset manual?`)) {
+            handleResetMeta();
+        }
+    } else {
+        alert(`Relatório de Diagnóstico\n\n${logString}`);
+    }
   };
 
   // --- FILE HANDLERS ---
@@ -351,7 +402,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <main className="ml-64 flex-1 p-8 overflow-y-auto">
             {activeTab === 'dashboard' && (
                 <div className="space-y-6">
-                    <h1 className="text-3xl font-bold">Visão Geral</h1>
+                    <div className="flex justify-between items-center">
+                        <h1 className="text-3xl font-bold">Visão Geral</h1>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-900 px-3 py-1.5 rounded-full border border-slate-800">
+                            <Clock size={14} className="text-emerald-500 animate-pulse" />
+                            <span>Auto-Sync: Ativo (1h)</span>
+                            {lastSyncTime && <span className="text-slate-600 border-l border-slate-700 pl-2 ml-2">Última: {lastSyncTime.toLocaleTimeString()}</span>}
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
                             <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Total Posts</h3>
@@ -374,12 +433,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
                          <h3 className="text-xl font-bold mb-4">Ações Rápidas</h3>
                          <button 
-                            onClick={handleSync}
+                            onClick={() => handleSync(false)}
                             disabled={isSyncing}
                             className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 disabled:opacity-50"
                          >
                             <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
-                            {isSyncing ? "Sincronizando..." : "Sincronizar Todas as Redes"}
+                            {isSyncing ? "Sincronizando..." : "Sincronizar Todas as Redes Manualmente"}
                          </button>
                     </div>
                 </div>
@@ -469,6 +528,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none"
                             />
                         </div>
+                        
+                        {/* Meta Actions Row */}
                         <div className="flex items-center justify-between bg-slate-950 p-4 rounded-lg">
                              <div className="text-sm">
                                 <span className="text-slate-400">Status: </span>
@@ -478,24 +539,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <span className="text-slate-500">Desconectado</span>
                                 )}
                              </div>
-                             <button 
-                                onClick={startMetaAuth}
-                                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold"
-                             >
-                                {metaAuth.accessToken ? "Reconectar Meta (Pop-up)" : "Conectar Meta (Pop-up)"}
-                             </button>
+                             
+                             <div className="flex gap-2">
+                                 {/* Debug Button */}
+                                 {metaAuth.accessToken && (
+                                     <button 
+                                        onClick={handleDebugMeta}
+                                        className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-lg text-xs font-bold border border-slate-700 flex items-center gap-1"
+                                        title="Diagnosticar"
+                                     >
+                                        <Zap size={14} /> Diag
+                                     </button>
+                                 )}
+                                 
+                                 {/* Reset Manual Button (New) */}
+                                 <button 
+                                    onClick={handleResetMeta}
+                                    className="bg-amber-900/30 hover:bg-amber-900/50 text-amber-500 border border-amber-900/50 px-3 py-2 rounded-lg text-xs font-bold"
+                                    title="Resetar Permissões no Facebook"
+                                 >
+                                    Resetar FB
+                                 </button>
+
+                                 {/* Re-Authorize (Force Permissions) */}
+                                 <button 
+                                    onClick={() => startMetaAuth(true)}
+                                    className="bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/50 px-3 py-2 rounded-lg text-xs font-bold"
+                                    title="Forçar pedido de permissões novamente"
+                                 >
+                                    Re-autorizar
+                                 </button>
+
+                                 {/* Main Connect */}
+                                 <button 
+                                    onClick={() => startMetaAuth(false)}
+                                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold"
+                                 >
+                                    {metaAuth.accessToken ? "Reconectar (Pop-up)" : "Conectar (Pop-up)"}
+                                 </button>
+                             </div>
                         </div>
-                        {metaAuth.accessToken && (
-                            <button 
-                                onClick={async () => {
-                                    const logs = await debugMetaConnection(metaAuth.accessToken);
-                                    alert(logs.join('\n'));
-                                }}
-                                className="mt-2 text-xs text-slate-500 hover:text-white underline"
-                            >
-                                Diagnóstico de Conexão
-                            </button>
-                        )}
                      </div>
                 </div>
             )}
