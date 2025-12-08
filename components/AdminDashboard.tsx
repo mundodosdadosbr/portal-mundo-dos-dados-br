@@ -4,7 +4,8 @@ import {
   Platform, 
   SocialPost,
   LandingPageContent,
-  CreatorProfile
+  CreatorProfile,
+  FeatureItem
 } from '../types';
 import { getYouTubePosts } from '../services/youtubeService';
 import { getTikTokPosts, getTikTokAuthUrl, DEFAULT_CLIENT_KEY, DEFAULT_CLIENT_SECRET, getRedirectUri } from '../services/tiktokService';
@@ -30,7 +31,9 @@ import {
   AlertTriangle,
   Lock,
   FileText,
-  UploadCloud
+  UploadCloud,
+  Save,
+  AvailableIcons
 } from './Icons';
 
 interface AdminDashboardProps {
@@ -75,6 +78,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   
+  // Local State for Forms (Drafts)
+  const [localProfile, setLocalProfile] = useState<CreatorProfile>(profile);
+  const [localLanding, setLocalLanding] = useState<LandingPageContent>(landingContent);
+  const [localYoutubeKey, setLocalYoutubeKey] = useState<string>(youtubeApiKey);
+  
+  // Sync props to local state when they change externally (e.g. initial load)
+  useEffect(() => { setLocalProfile(profile); }, [profile]);
+  useEffect(() => { setLocalLanding(landingContent); }, [landingContent]);
+  useEffect(() => { setLocalYoutubeKey(youtubeApiKey); }, [youtubeApiKey]);
+
   // File System State
   const [virtualFiles, setVirtualFiles] = useState<VirtualFile[]>([]);
   const [newFile, setNewFile] = useState({ path: '', content: '' });
@@ -106,6 +119,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       getVirtualFilesCloud().then(setVirtualFiles);
     }
   }, [activeView]);
+
+  // SAVE HANDLERS
+  const handleSaveProfileClick = () => {
+    setProfile(localProfile);
+    alert('Perfil salvo com sucesso!');
+  };
+
+  const handleSaveLandingClick = () => {
+    setLandingContent(localLanding);
+    alert('Página CMS salva com sucesso!');
+  };
+
+  const handleSaveYoutubeClick = () => {
+    setYoutubeApiKey(localYoutubeKey);
+    alert('Integração YouTube salva com sucesso!');
+  };
 
   const handleDelete = (id: string) => {
     if (confirm('Tem certeza que deseja excluir esta postagem?')) {
@@ -254,6 +283,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     await deleteVirtualFile(path);
     const files = await getVirtualFilesCloud();
     setVirtualFiles(files);
+  };
+  
+  // --- DYNAMIC FEATURES HANDLERS ---
+  const handleAddFeature = () => {
+    const newFeature: FeatureItem = {
+      id: Date.now().toString(),
+      title: 'Nova Seção',
+      description: 'Descrição do recurso',
+      icon: 'Star'
+    };
+    setLocalLanding({
+      ...localLanding,
+      features: [...(localLanding.features || []), newFeature]
+    });
+  };
+
+  const handleRemoveFeature = (id: string) => {
+    setLocalLanding({
+      ...localLanding,
+      features: localLanding.features.filter(f => f.id !== id)
+    });
+  };
+
+  const handleUpdateFeature = (id: string, field: keyof FeatureItem, value: string) => {
+    setLocalLanding({
+      ...localLanding,
+      features: localLanding.features.map(f => f.id === id ? { ...f, [field]: value } : f)
+    });
   };
 
   const isTikTokConnected = !!tiktokAuth.accessToken;
@@ -542,11 +599,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="max-w-2xl mx-auto bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
                  <div className="flex items-center space-x-4 mb-8">
                    <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-indigo-500 relative bg-slate-800">
-                      <img src={profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                      <img src={localProfile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                    </div>
                    <div>
-                     <h2 className="text-xl font-bold text-white">{profile.name}</h2>
-                     <p className="text-indigo-400">{profile.handle}</p>
+                     <h2 className="text-xl font-bold text-white">{localProfile.name}</h2>
+                     <p className="text-indigo-400">{localProfile.handle}</p>
                    </div>
                  </div>
 
@@ -555,8 +612,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <label className="block text-sm font-medium text-slate-400 mb-2">Nome de Exibição</label>
                       <input 
                         type="text" 
-                        value={profile.name}
-                        onChange={(e) => setProfile({...profile, name: e.target.value})}
+                        value={localProfile.name}
+                        onChange={(e) => setLocalProfile({...localProfile, name: e.target.value})}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                       />
                     </div>
@@ -565,8 +622,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <label className="block text-sm font-medium text-slate-400 mb-2">Handle (@usuario)</label>
                       <input 
                         type="text" 
-                        value={profile.handle}
-                        onChange={(e) => setProfile({...profile, handle: e.target.value})}
+                        value={localProfile.handle}
+                        onChange={(e) => setLocalProfile({...localProfile, handle: e.target.value})}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                       />
                     </div>
@@ -576,8 +633,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <label className="block text-sm font-medium text-slate-400 mb-2">URL do Avatar (Foto)</label>
                         <input 
                           type="text" 
-                          value={profile.avatarUrl}
-                          onChange={(e) => setProfile({...profile, avatarUrl: e.target.value})}
+                          value={localProfile.avatarUrl}
+                          onChange={(e) => setLocalProfile({...localProfile, avatarUrl: e.target.value})}
                           className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                           placeholder="https://..."
                         />
@@ -588,13 +645,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                          <div className="flex space-x-3">
                            <input 
                               type="text" 
-                              value={profile.faviconUrl || ''}
-                              onChange={(e) => setProfile({...profile, faviconUrl: e.target.value})}
+                              value={localProfile.faviconUrl || ''}
+                              onChange={(e) => setLocalProfile({...localProfile, faviconUrl: e.target.value})}
                               className="flex-grow bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                               placeholder="https://..."
                             />
                             <div className="w-12 h-12 flex-shrink-0 bg-slate-800 border border-slate-700 rounded-lg flex items-center justify-center overflow-hidden">
-                                {profile.faviconUrl ? <img src={profile.faviconUrl} alt="Favicon" className="w-6 h-6 object-contain" /> : <span className="text-xs text-slate-600">?</span>}
+                                {localProfile.faviconUrl ? <img src={localProfile.faviconUrl} alt="Favicon" className="w-6 h-6 object-contain" /> : <span className="text-xs text-slate-600">?</span>}
                             </div>
                          </div>
                       </div>
@@ -604,10 +661,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <label className="block text-sm font-medium text-slate-400 mb-2">Biografia</label>
                       <textarea 
                         rows={6}
-                        value={profile.bio}
-                        onChange={(e) => setProfile({...profile, bio: e.target.value})}
+                        value={localProfile.bio}
+                        onChange={(e) => setLocalProfile({...localProfile, bio: e.target.value})}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                       />
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-800 flex justify-end">
+                      <button 
+                        onClick={handleSaveProfileClick}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg flex items-center gap-2"
+                      >
+                        <Save size={18} />
+                        <span>Salvar Perfil</span>
+                      </button>
                     </div>
                  </div>
               </div>
@@ -628,8 +695,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <label className="block text-sm font-medium text-slate-400 mb-2">Título Principal (Headline)</label>
                       <input 
                         type="text" 
-                        value={landingContent.headline}
-                        onChange={(e) => setLandingContent({...landingContent, headline: e.target.value})}
+                        value={localLanding.headline}
+                        onChange={(e) => setLocalLanding({...localLanding, headline: e.target.value})}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                       />
                     </div>
@@ -639,13 +706,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="flex space-x-3">
                          <input 
                             type="text" 
-                            value={landingContent.logoUrl || ''}
-                            onChange={(e) => setLandingContent({...landingContent, logoUrl: e.target.value})}
+                            value={localLanding.logoUrl || ''}
+                            onChange={(e) => setLocalLanding({...localLanding, logoUrl: e.target.value})}
                             className="flex-grow bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                             placeholder="https://... (Deixe em branco para usar ícone padrão)"
                          />
                           <div className="w-12 h-12 flex-shrink-0 bg-slate-800 border border-slate-700 rounded-lg flex items-center justify-center overflow-hidden">
-                                {landingContent.logoUrl ? <img src={landingContent.logoUrl} alt="Logo" className="w-8 h-8 object-contain" /> : <LayoutDashboard className="text-slate-600" />}
+                                {localLanding.logoUrl ? <img src={localLanding.logoUrl} alt="Logo" className="w-8 h-8 object-contain" /> : <LayoutDashboard className="text-slate-600" />}
                            </div>
                       </div>
                     </div>
@@ -654,8 +721,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <label className="block text-sm font-medium text-slate-400 mb-2">Subtítulo</label>
                       <textarea 
                         rows={3}
-                        value={landingContent.subheadline}
-                        onChange={(e) => setLandingContent({...landingContent, subheadline: e.target.value})}
+                        value={localLanding.subheadline}
+                        onChange={(e) => setLocalLanding({...localLanding, subheadline: e.target.value})}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                       />
                     </div>
@@ -664,64 +731,89 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <label className="block text-sm font-medium text-slate-400 mb-2">Texto do Botão CTA</label>
                       <input 
                         type="text" 
-                        value={landingContent.ctaButtonText}
-                        onChange={(e) => setLandingContent({...landingContent, ctaButtonText: e.target.value})}
+                        value={localLanding.ctaButtonText}
+                        onChange={(e) => setLocalLanding({...localLanding, ctaButtonText: e.target.value})}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                       />
                     </div>
 
                     <div className="pt-6 border-t border-slate-800">
-                      <h3 className="font-semibold text-white mb-4">Seções de Recursos</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                           <input 
-                              type="text" 
-                              value={landingContent.feature1Title}
-                              onChange={(e) => setLandingContent({...landingContent, feature1Title: e.target.value})}
-                              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-sm text-white"
-                              placeholder="Título Feature 1"
-                           />
-                           <textarea 
-                              rows={3}
-                              value={landingContent.feature1Desc}
-                              onChange={(e) => setLandingContent({...landingContent, feature1Desc: e.target.value})}
-                              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-sm text-white"
-                              placeholder="Descrição Feature 1"
-                           />
-                        </div>
-                        <div className="space-y-2">
-                           <input 
-                              type="text" 
-                              value={landingContent.feature2Title}
-                              onChange={(e) => setLandingContent({...landingContent, feature2Title: e.target.value})}
-                              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-sm text-white"
-                              placeholder="Título Feature 2"
-                           />
-                           <textarea 
-                              rows={3}
-                              value={landingContent.feature2Desc}
-                              onChange={(e) => setLandingContent({...landingContent, feature2Desc: e.target.value})}
-                              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-sm text-white"
-                              placeholder="Descrição Feature 2"
-                           />
-                        </div>
-                        <div className="space-y-2">
-                           <input 
-                              type="text" 
-                              value={landingContent.feature3Title}
-                              onChange={(e) => setLandingContent({...landingContent, feature3Title: e.target.value})}
-                              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-sm text-white"
-                              placeholder="Título Feature 3"
-                           />
-                           <textarea 
-                              rows={3}
-                              value={landingContent.feature3Desc}
-                              onChange={(e) => setLandingContent({...landingContent, feature3Desc: e.target.value})}
-                              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-sm text-white"
-                              placeholder="Descrição Feature 3"
-                           />
-                        </div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-semibold text-white">Seções de Recursos (Dinâmico)</h3>
+                        <button 
+                          onClick={handleAddFeature}
+                          className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded flex items-center gap-1 transition-colors"
+                        >
+                          <Plus size={14} /> Adicionar Recurso
+                        </button>
                       </div>
+                      
+                      <div className="space-y-4">
+                        {localLanding.features && localLanding.features.map((feature) => (
+                          <div key={feature.id} className="bg-slate-950 border border-slate-700 rounded-lg p-4 relative group">
+                             <div className="flex justify-between items-start mb-3">
+                               <div className="flex items-center gap-2">
+                                 <span className="text-xs text-slate-500 font-mono">ID: {feature.id}</span>
+                               </div>
+                               <button 
+                                 onClick={() => handleRemoveFeature(feature.id)}
+                                 className="text-slate-600 hover:text-red-400 transition-colors"
+                                 title="Remover"
+                               >
+                                 <Trash2 size={16} />
+                               </button>
+                             </div>
+                             
+                             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                               <div className="md:col-span-8 space-y-3">
+                                  <input 
+                                    type="text" 
+                                    value={feature.title}
+                                    onChange={(e) => handleUpdateFeature(feature.id, 'title', e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                                    placeholder="Título do Recurso"
+                                  />
+                                  <textarea 
+                                    rows={2}
+                                    value={feature.description}
+                                    onChange={(e) => handleUpdateFeature(feature.id, 'description', e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white"
+                                    placeholder="Descrição detalhada"
+                                  />
+                               </div>
+                               <div className="md:col-span-4">
+                                  <label className="block text-xs text-slate-500 mb-1">Ícone</label>
+                                  <select 
+                                    value={feature.icon}
+                                    onChange={(e) => handleUpdateFeature(feature.id, 'icon', e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white focus:outline-none"
+                                  >
+                                    {Object.keys(AvailableIcons).map(iconName => (
+                                      <option key={iconName} value={iconName}>{iconName}</option>
+                                    ))}
+                                  </select>
+                                  <div className="mt-2 flex justify-center p-2 bg-slate-900 rounded border border-slate-700">
+                                     {React.createElement(AvailableIcons[feature.icon] || AvailableIcons['TrendingUp'], { size: 24, className: 'text-indigo-400' })}
+                                  </div>
+                               </div>
+                             </div>
+                          </div>
+                        ))}
+                        
+                        {(!localLanding.features || localLanding.features.length === 0) && (
+                          <p className="text-center text-slate-500 text-sm py-4">Nenhum recurso adicionado.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-slate-800 flex justify-end">
+                      <button 
+                        onClick={handleSaveLandingClick}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg flex items-center gap-2"
+                      >
+                        <Save size={18} />
+                        <span>Salvar Página CMS</span>
+                      </button>
                     </div>
                  </div>
               </div>
@@ -769,13 +861,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     
                     <div className="mt-4 space-y-2">
                        <label className="text-xs text-slate-400">Chave de API do YouTube</label>
-                       <input 
-                         type="password" 
-                         value={youtubeApiKey}
-                         onChange={(e) => setYoutubeApiKey(e.target.value)}
-                         placeholder="Cole sua API Key aqui"
-                         className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-red-500 focus:outline-none"
-                       />
+                       <div className="flex gap-2">
+                         <input 
+                           type="password" 
+                           value={localYoutubeKey}
+                           onChange={(e) => setLocalYoutubeKey(e.target.value)}
+                           placeholder="Cole sua API Key aqui"
+                           className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-red-500 focus:outline-none"
+                         />
+                         <button
+                           onClick={handleSaveYoutubeClick}
+                           className="bg-slate-800 hover:bg-slate-700 text-white px-3 rounded border border-slate-700"
+                           title="Salvar Chave"
+                         >
+                           <Save size={16} />
+                         </button>
+                       </div>
                        <p className="text-[10px] text-slate-500">
                          Necessário para sincronização em tempo real do YouTube.
                        </p>

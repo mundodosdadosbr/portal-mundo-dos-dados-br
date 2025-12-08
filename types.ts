@@ -1,3 +1,4 @@
+
 export enum Platform {
   YOUTUBE = 'YouTube',
   INSTAGRAM = 'Instagram',
@@ -32,15 +33,17 @@ export interface AiSuggestion {
   type: 'caption' | 'idea' | 'tags';
 }
 
+export interface FeatureItem {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+}
+
 export interface LandingPageContent {
   headline: string;
   subheadline: string;
   ctaButtonText: string;
   logoUrl?: string;
-  feature1Title: string;
-  feature1Desc: string;
-  feature2Title: string;
-  feature2Desc: string;
-  feature3Title: string;
-  feature3Desc: string;
+  features: FeatureItem[];
 }

@@ -37,12 +37,11 @@ const INITIAL_LANDING_CONTENT: LandingPageContent = {
   subheadline: "Carregando configurações...",
   ctaButtonText: "Aguarde",
   logoUrl: "images/logo.png",
-  feature1Title: "...",
-  feature1Desc: "...",
-  feature2Title: "...",
-  feature2Desc: "...",
-  feature3Title: "...",
-  feature3Desc: "...",
+  features: [
+    { id: '1', title: "...", description: "...", icon: "TrendingUp" },
+    { id: '2', title: "...", description: "...", icon: "CloudLightning" },
+    { id: '3', title: "...", description: "...", icon: "Users" }
+  ]
 };
 
 type ViewState = 'landing' | 'portal' | 'admin';
@@ -227,7 +226,25 @@ const App: React.FC = () => {
     // Subscribe immediately to Cloud data
     const unsubSettings = subscribeToSettings((data) => {
       if (data.profile) setProfile(prev => ({ ...prev, ...data.profile }));
-      if (data.landingContent) setLandingContent(data.landingContent);
+      
+      if (data.landingContent) {
+         // MIGRATION LOGIC: Convert old format to new dynamic features if needed
+         let content: any = data.landingContent;
+         if (!content.features && content.feature1Title) {
+            console.log("Migrating legacy CMS content to dynamic features...");
+            content.features = [
+              { id: '1', title: content.feature1Title, description: content.feature1Desc, icon: 'TrendingUp' },
+              { id: '2', title: content.feature2Title, description: content.feature2Desc, icon: 'CloudLightning' },
+              { id: '3', title: content.feature3Title, description: content.feature3Desc, icon: 'Users' }
+            ];
+         }
+         // Ensure features array exists even if DB has partial data
+         if (!content.features) {
+           content.features = INITIAL_LANDING_CONTENT.features;
+         }
+         setLandingContent(content);
+      }
+
       if (data.keys) {
         setYoutubeApiKey(data.keys.youtube || '');
         if (data.keys.tiktokAuth) {

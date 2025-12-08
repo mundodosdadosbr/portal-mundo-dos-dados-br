@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Sparkles, TrendingUp, Users, LayoutDashboard, CloudLightning, X, ShieldCheck, Lock, Smartphone, Mail, Github } from './Icons';
+import { Sparkles, TrendingUp, Users, LayoutDashboard, CloudLightning, X, ShieldCheck, Lock, Smartphone, Mail, Github, AvailableIcons } from './Icons';
 import { LandingPageContent } from '../types';
 
 interface LandingPageProps {
@@ -179,36 +179,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdmi
       <section className="bg-slate-900/50 py-24 border-y border-slate-900">
         <div className="container mx-auto px-6">
           <div className="grid md:grid-cols-3 gap-12">
-            {/* Feature 1 */}
-            <div className="p-8 rounded-2xl bg-slate-950 border border-slate-800 hover:border-indigo-500/50 transition-colors group">
-              <div className="w-14 h-14 bg-indigo-500/10 rounded-xl flex items-center justify-center mb-6 text-indigo-400 group-hover:scale-110 transition-transform">
-                <TrendingUp size={28} />
-              </div>
-              <h3 className="text-xl font-bold mb-3">{content.feature1Title}</h3>
-              <p className="text-slate-400 leading-relaxed">
-                {content.feature1Desc}
-              </p>
-            </div>
-            {/* Feature 2 */}
-            <div className="p-8 rounded-2xl bg-slate-950 border border-slate-800 hover:border-purple-500/50 transition-colors group">
-              <div className="w-14 h-14 bg-purple-500/10 rounded-xl flex items-center justify-center mb-6 text-purple-400 group-hover:scale-110 transition-transform">
-                <CloudLightning size={28} />
-              </div>
-              <h3 className="text-xl font-bold mb-3">{content.feature2Title}</h3>
-              <p className="text-slate-400 leading-relaxed">
-                {content.feature2Desc}
-              </p>
-            </div>
-            {/* Feature 3 */}
-            <div className="p-8 rounded-2xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 transition-colors group">
-              <div className="w-14 h-14 bg-emerald-500/10 rounded-xl flex items-center justify-center mb-6 text-emerald-400 group-hover:scale-110 transition-transform">
-                <Users size={28} />
-              </div>
-              <h3 className="text-xl font-bold mb-3">{content.feature3Title}</h3>
-              <p className="text-slate-400 leading-relaxed">
-                {content.feature3Desc}
-              </p>
-            </div>
+            {content.features && content.features.map((feature) => {
+               // Dynamic Icon Rendering
+               const IconComponent = AvailableIcons[feature.icon] || TrendingUp;
+               return (
+                 <div key={feature.id} className="p-8 rounded-2xl bg-slate-950 border border-slate-800 hover:border-indigo-500/50 transition-colors group">
+                    <div className="w-14 h-14 bg-indigo-500/10 rounded-xl flex items-center justify-center mb-6 text-indigo-400 group-hover:scale-110 transition-transform">
+                      <IconComponent size={28} />
+                    </div>
+                    <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
+                    <p className="text-slate-400 leading-relaxed">
+                      {feature.description}
+                    </p>
+                  </div>
+               );
+            })}
           </div>
         </div>
       </section>
