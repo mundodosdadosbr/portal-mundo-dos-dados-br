@@ -15,11 +15,6 @@ export const getMetaRedirectUri = () => {
 
 /**
  * 1. Generate Login URL for Meta (Facebook/Instagram)
- * We use the "Implicit Flow" (response_type=token) for client-side simplicity
- * Scopes required:
- * - pages_show_list, pages_read_engagement (For Facebook Pages)
- * - instagram_basic, instagram_manage_insights (For Instagram Business)
- * - public_profile (Default)
  */
 export const getMetaAuthUrl = (appId: string, forceRerequest: boolean = false) => {
   const redirectUri = getMetaRedirectUri();
@@ -41,37 +36,27 @@ export const getMetaAuthUrl = (appId: string, forceRerequest: boolean = false) =
 };
 
 /**
- * 2. Fetch User's Pages and linked Instagram Accounts
+ * Helper: Fetch User's Pages and linked Instagram Accounts (with Followers Count)
  */
 const getConnectedAccounts = async (accessToken: string) => {
   try {
-    // Request nested fields: instagram_business_account{id,username}
-    const fields = 'id,name,access_token,instagram_business_account{id,username,profile_picture_url}';
+    // Request nested fields: instagram_business_account{id,username,followers_count}
+    // Added followers_count to the fields
+    const fields = 'id,name,followers_count,access_token,instagram_business_account{id,username,profile_picture_url,followers_count}';
     const response = await fetch(`${GRAPH_API_URL}/me/accounts?fields=${fields}&access_token=${accessToken}`);
     const data = await response.json();
     
     if (data.error) throw new Error(data.error.message);
     
-    // Fallback: If list is empty, try to fetch specific page ID directly
+    // Fallback logic
     if ((!data.data || data.data.length === 0)) {
         console.warn("Listagem vazia. Tentando buscar página específica...");
-        // Updated ID based on user feedback
-        const targetPageId = '262931593566452'; // Mundo dos Dados BR (Confirmed ID)
+        const targetPageId = '262931593566452'; 
         
         const directResp = await fetch(`${GRAPH_API_URL}/${targetPageId}?fields=${fields}&access_token=${accessToken}`);
         const directData = await directResp.json();
         
-        if (directData.error) {
-            console.error("Erro no fallback direto:", directData.error);
-            // Try the other potential ID just in case
-            const altId = '61557248068717';
-            const altResp = await fetch(`${GRAPH_API_URL}/${altId}?fields=${fields}&access_token=${accessToken}`);
-            const altData = await altResp.json();
-            if (altData.id) return [altData];
-        }
-
         if (directData.id) {
-            console.log("Página encontrada via ID direto!");
             return [directData];
         }
     }
@@ -84,8 +69,36 @@ const getConnectedAccounts = async (accessToken: string) => {
 };
 
 /**
+ * Get Platform Stats (Followers)
+ */
+export const getMetaPlatformStats = async (accessToken: string) => {
+  if (!accessToken) return { instagram: 0, facebook: 0 };
+  
+  try {
+    const pages = await getConnectedAccounts(accessToken);
+    
+    let igFollowers = 0;
+    let fbFollowers = 0;
+
+    // Sum up followers from all connected pages/accounts found
+    pages.forEach((p: any) => {
+       if (p.instagram_business_account && p.instagram_business_account.followers_count) {
+         igFollowers += p.instagram_business_account.followers_count;
+       }
+       if (p.followers_count) {
+         fbFollowers += p.followers_count;
+       }
+    });
+
+    return { instagram: igFollowers, facebook: fbFollowers };
+  } catch (e) {
+    console.error("Error fetching Meta stats", e);
+    return { instagram: 0, facebook: 0 };
+  }
+};
+
+/**
  * 3. Fetch Instagram Media
- * Targeted for 'mundodosdadosbrasil'
  */
 export const getInstagramPosts = async (accessToken: string): Promise<SocialPost[]> => {
   if (!accessToken) return [];
@@ -93,28 +106,20 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
   const TARGET_HANDLE = 'mundodosdadosbrasil';
 
   try {
-    // Step A: Get Pages
     const pages = await getConnectedAccounts(accessToken);
-    
-    // Step B: Find specific IG Business Account
     let igPage = pages.find((p: any) => 
       p.instagram_business_account?.username?.toLowerCase() === TARGET_HANDLE
     );
     
-    // Fallback: If not found, take the first one available that has ANY instagram
     if (!igPage) {
-      console.warn(`Conta '${TARGET_HANDLE}' não encontrada explicitamente. Buscando qualquer conta vinculada...`);
       igPage = pages.find((p: any) => p.instagram_business_account);
     }
     
-    if (!igPage) {
-      console.warn("DIAGNÓSTICO: Páginas do Facebook encontradas, mas nenhuma tem 'instagram_business_account' vinculado.");
-      return [];
-    }
+    if (!igPage) return [];
 
     const igUserId = igPage.instagram_business_account.id;
 
-    // Step C: Fetch Media
+    // Fetch Media
     const mediaUrl = `${GRAPH_API_URL}/${igUserId}/media?fields=id,caption,media_type,media_url,permalink,thumbnail_url,like_count,comments_count,timestamp&limit=20&access_token=${accessToken}`;
     
     const response = await fetch(mediaUrl);
@@ -149,17 +154,15 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
 
 /**
  * 4. Fetch Facebook Page Posts
- * Targeted for 'Mundo dos Dados BR'
  */
 export const getFacebookPosts = async (accessToken: string): Promise<SocialPost[]> => {
   if (!accessToken) return [];
 
-  const TARGET_PAGE_NAME = 'Mundo dos Dados BR';
-  const TARGET_PAGE_ID = '262931593566452'; // Confirmed ID
+  const TARGET_PAGE_ID = '262931593566452'; 
 
   try {
     const pages = await getConnectedAccounts(accessToken);
-    let fbPage = pages.find((p: any) => p.id === TARGET_PAGE_ID) || pages.find((p: any) => p.name === TARGET_PAGE_NAME) || pages[0];
+    let fbPage = pages.find((p: any) => p.id === TARGET_PAGE_ID) || pages[0];
     
     if (!fbPage) return [];
 
@@ -204,7 +207,6 @@ export const debugMetaConnection = async (accessToken: string) => {
   }
 
   try {
-    // 1. Check Permissions
     logs.push("Verificando escopos concedidos (/me/permissions)...");
     const permResp = await fetch(`${GRAPH_API_URL}/me/permissions?access_token=${accessToken}`);
     const permData = await permResp.json();
@@ -216,34 +218,26 @@ export const debugMetaConnection = async (accessToken: string) => {
         });
     }
 
-    // 2. Fetch Pages
     logs.push("Buscando Páginas...");
     const pages = await getConnectedAccounts(accessToken);
     logs.push(`Encontradas: ${pages.length} páginas.`);
 
     if (pages.length === 0) {
       logs.push("ALERTA CRÍTICO: Nenhuma página retornada.");
-      
-      if (allGranted) {
-          logs.push("--- ANÁLISE DE CAUSA RAIZ ---");
-          logs.push("1. As permissões estão OK ('granted').");
-          logs.push("2. Mas a API não retorna nenhuma página.");
-          logs.push("CONCLUSÃO: O Facebook pode estar bloqueando listagem vazia. Tentamos buscar diretamente o ID 262931593566452.");
-      }
-      
       return logs;
     }
 
-    // 3. Check each page for IG
     let igFound = false;
     for (const page of pages) {
       logs.push(`---`);
       logs.push(`Página FB: "${page.name}" (ID: ${page.id})`);
+      logs.push(`Seguidores FB: ${page.followers_count || 0}`);
       
       if (page.instagram_business_account) {
         igFound = true;
         const igUser = page.instagram_business_account.username || 'Desconhecido';
         logs.push(`✅ VINCULADO: Instagram @${igUser} (ID: ${page.instagram_business_account.id})`);
+        logs.push(`Seguidores IG: ${page.instagram_business_account.followers_count || 0}`);
       } else {
         logs.push("⚠️ SEM VÍNCULO: Esta página não tem conta Instagram Business associada.");
       }

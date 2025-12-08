@@ -59,65 +59,70 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
 
   // --- STATS CALCULATION ---
   const stats = useMemo(() => {
-    // Helper format
     const formatNumber = (num: number) => {
       return new Intl.NumberFormat('pt-BR', { notation: "compact", maximumFractionDigits: 1 }).format(num);
     };
 
-    // Use filteredPosts instead of all posts to respect the active tab
     const currentPosts = filteredPosts;
 
-    // 1. Views (Last 30 Days) - Based on filtered posts
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const monthlyViews = currentPosts.reduce((acc, post) => {
-      const postDate = new Date(post.date);
-      // Validar data e somar views
-      if (!isNaN(postDate.getTime()) && postDate >= thirtyDaysAgo) {
-        return acc + (post.views || 0);
-      }
-      return acc;
-    }, 0);
+    // 1. Total Views (Removal of 30-day limit to reflect accumulated data)
+    // If we only have recent posts, this is "Recent Views". 
+    const totalViews = currentPosts.reduce((acc, post) => acc + (post.views || 0), 0);
 
-    // 2. Engagement Rate = (Likes + Comments) / Total Views * 100 - Based on filtered posts
+    // 2. Engagement Rate = (Likes + Comments) / Total Views * 100
+    // If Views are 0 (common in API restrictions), we fallback to Interactions count visual
     const totalInteractions = currentPosts.reduce((acc, post) => acc + (post.likes || 0) + (post.comments || 0), 0);
-    const totalViewsAllTime = currentPosts.reduce((acc, post) => acc + (post.views || 0), 0);
     
-    const engagementRate = totalViewsAllTime > 0 
-      ? ((totalInteractions / totalViewsAllTime) * 100).toFixed(2) 
-      : '0.0';
+    let engagementRate = '0.0';
+    if (totalViews > 0) {
+      engagementRate = ((totalInteractions / totalViews) * 100).toFixed(2);
+    } else if (totalInteractions > 0 && currentPosts.length > 0) {
+       // Estimate based on interactions per post if views are missing
+       // Arbitrary fallback logic: (Interactions / Posts) just to show something
+       engagementRate = (totalInteractions / currentPosts.length).toFixed(1); 
+    }
 
-    // 3. Total Posts - Based on filtered posts
-    const totalPosts = currentPosts.length;
+    // 3. Followers Logic (Dynamic based on Tab)
+    let followersDisplay = profile.subscribers || '-';
+    
+    if (profile.platformStats) {
+      if (activeTab === Platform.YOUTUBE) followersDisplay = formatNumber(profile.platformStats.youtubeFollowers || 0);
+      else if (activeTab === Platform.INSTAGRAM) followersDisplay = formatNumber(profile.platformStats.instagramFollowers || 0);
+      else if (activeTab === Platform.TIKTOK) followersDisplay = formatNumber(profile.platformStats.tiktokFollowers || 0);
+      else if (activeTab === Platform.FACEBOOK) followersDisplay = formatNumber(profile.platformStats.facebookFollowers || 0);
+      // 'All' stays as the Total string in profile.subscribers
+    }
+
+    // 4. Label Adjustment
+    const viewsLabel = activeTab === 'All' ? 'Vis. Mensais*' : 'Visualizações';
 
     return [
       { 
         label: 'Seguidores', 
-        value: profile.subscribers || '-', 
+        value: followersDisplay, 
         icon: Users, 
         color: 'text-indigo-400' 
       },
       { 
-        label: 'Vis. Mensais', 
-        value: formatNumber(monthlyViews), 
+        label: totalViews === 0 && totalInteractions > 0 ? 'Interações' : viewsLabel, 
+        value: totalViews === 0 && totalInteractions > 0 ? formatNumber(totalInteractions) : formatNumber(totalViews), 
         icon: TrendingUp, 
         color: 'text-emerald-400' 
       },
       { 
-        label: 'Engajamento', 
-        value: `${engagementRate}%`, 
+        label: totalViews === 0 && totalInteractions > 0 ? 'Média/Post' : 'Engajamento', 
+        value: totalViews === 0 && totalInteractions > 0 ? engagementRate : `${engagementRate}%`, 
         icon: Heart, 
         color: 'text-rose-400' 
       },
       { 
         label: 'Publicações', 
-        value: totalPosts.toLocaleString('pt-BR'), 
+        value: currentPosts.length.toLocaleString('pt-BR'), 
         icon: LayoutDashboard, 
         color: 'text-amber-400' 
       },
     ];
-  }, [filteredPosts, profile.subscribers]); // Dependency changed to filteredPosts
+  }, [filteredPosts, profile, activeTab]); 
 
 
   const NavButton = ({ label, icon: Icon, tab }: { label: string, icon: any, tab: Platform | 'All' }) => (

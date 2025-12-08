@@ -41,7 +41,8 @@ import {
   BookOpen,
   MessageSquare,
   Send,
-  Bot
+  Bot,
+  Settings
 } from 'lucide-react';
 
 export { 
@@ -85,7 +86,8 @@ export {
   BookOpen,
   MessageSquare,
   Send,
-  Bot
+  Bot,
+  Settings
 };
 
 // Custom TikTok icon component
@@ -139,5 +141,6 @@ export const AvailableIcons: Record<string, React.ElementType> = {
   Lock,
   MessageSquare,
   Bot,
+  Settings,
   Star: Sparkles // Alias
 };

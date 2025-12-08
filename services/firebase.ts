@@ -1,9 +1,10 @@
 
+
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
 import * as OTPAuth from 'otpauth';
-import { CreatorProfile, LandingPageContent, SocialPost } from '../types';
+import { CreatorProfile, LandingPageContent, SocialPost, TikTokAuthData, MetaAuthData } from '../types';
 
 // --- CONFIGURAÇÃO DO FIREBASE ---
 const firebaseConfig = {
@@ -33,19 +34,7 @@ const KEY_UI_SESSION = 'nexus_ui_session_indicator';
 const ALLOWED_EMAIL = 'diego.morais@mundodosdadosbr.com';
 
 // --- TYPES ---
-export interface TikTokAuthData {
-  clientKey: string;
-  clientSecret: string;
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number;
-}
-
-export interface MetaAuthData {
-  appId: string;
-  accessToken: string;
-  expiresAt: number;
-}
+// Removed locally defined interfaces in favor of shared types in types.ts
 
 export interface VirtualFile {
   path: string;

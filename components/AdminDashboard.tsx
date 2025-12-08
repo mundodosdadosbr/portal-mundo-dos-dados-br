@@ -1,265 +1,132 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  Platform, 
-  SocialPost,
-  LandingPageContent,
-  CreatorProfile,
-  FeatureItem
-} from '../types';
+  LayoutDashboard, Settings, RefreshCw, LogOut, Save, Youtube, 
+  Instagram, Facebook, Trash2, Plus, Eye, Link2, TikTokIcon,
+  TrendingUp, CloudLightning, Users, Bot
+} from './Icons';
+import { SocialPost, CreatorProfile, LandingPageContent, Platform, TikTokAuthData, MetaAuthData } from '../types';
 import { getYouTubePosts, getYouTubeChannelStatistics } from '../services/youtubeService';
 import { 
   getTikTokPosts, 
   getTikTokAuthUrl, 
-  exchangeTikTokCode, 
+  getTikTokUserStats,
   DEFAULT_CLIENT_KEY, 
-  DEFAULT_CLIENT_SECRET, 
-  getRedirectUri 
+  DEFAULT_CLIENT_SECRET 
 } from '../services/tiktokService';
-import { getMetaAuthUrl, getInstagramPosts, getFacebookPosts, getMetaRedirectUri, debugMetaConnection } from '../services/metaService';
-import { TikTokAuthData, MetaAuthData, getVirtualFilesCloud, saveVirtualFile, deleteVirtualFile, VirtualFile } from '../services/firebase';
 import { 
-  Trash2, 
-  Plus, 
-  LogOut, 
-  BarChart3, 
-  LayoutDashboard,
-  Youtube,
-  Instagram,
-  Facebook,
-  TikTokIcon,
-  X,
-  CheckCircle,
-  Eye,
-  Link2,
-  RefreshCw,
-  CloudLightning,
-  Video,
-  Users,
-  AlertTriangle,
-  Lock,
-  FileText,
-  UploadCloud,
-  Save,
-  AvailableIcons,
-  Bot,
-  MessageSquare,
-  Zap
-} from './Icons';
+  getMetaAuthUrl, 
+  getInstagramPosts, 
+  getFacebookPosts, 
+  getMetaPlatformStats,
+  debugMetaConnection 
+} from '../services/metaService';
 
 interface AdminDashboardProps {
   posts: SocialPost[];
-  setPosts: any; 
-  dbActions?: {
-    addPost: (p: SocialPost) => void;
+  setPosts: (posts: SocialPost[] | ((prev: SocialPost[]) => SocialPost[])) => void;
+  dbActions: {
+    addPost: (post: SocialPost) => void;
     deletePost: (id: string) => void;
-    syncPosts: (p: SocialPost[]) => void;
+    syncPosts: (posts: SocialPost[]) => void;
     clearPosts: () => void;
   };
   onLogout: () => void;
   onViewPortal: () => void;
   landingContent: LandingPageContent;
-  setLandingContent: (c: LandingPageContent) => void;
+  setLandingContent: (content: LandingPageContent) => void;
   profile: CreatorProfile;
-  setProfile: (p: CreatorProfile) => void;
+  setProfile: (profile: CreatorProfile) => void;
   youtubeApiKey: string;
-  setYoutubeApiKey: (k: string) => void;
+  setYoutubeApiKey: (key: string) => void;
   tiktokAuth: TikTokAuthData;
-  setTiktokAuth: (data: Partial<TikTokAuthData>) => void;
+  setTiktokAuth: (auth: Partial<TikTokAuthData>) => void;
   metaAuth: MetaAuthData;
-  setMetaAuth: (data: Partial<MetaAuthData>) => void;
+  setMetaAuth: (auth: Partial<MetaAuthData>) => void;
 }
 
-type AdminView = 'content' | 'integrations' | 'pages' | 'profile' | 'files' | 'chatbot';
-
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  posts, 
-  setPosts, 
-  dbActions,
-  onLogout, 
-  onViewPortal,
-  landingContent,
-  setLandingContent,
-  profile,
-  setProfile,
-  youtubeApiKey,
-  setYoutubeApiKey,
-  tiktokAuth,
-  setTiktokAuth,
-  metaAuth,
-  setMetaAuth
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({
+  posts, setPosts, dbActions, onLogout, onViewPortal,
+  landingContent, setLandingContent, profile, setProfile,
+  youtubeApiKey, setYoutubeApiKey, tiktokAuth, setTiktokAuth, metaAuth, setMetaAuth
 }) => {
-  const [activeView, setActiveView] = useState<AdminView>('content');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'posts' | 'content' | 'integrations'>('dashboard');
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  
-  // Debug State
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
-  const [isDebugLoading, setIsDebugLoading] = useState(false);
-  
-  // Local State for Forms (Drafts)
-  const [localProfile, setLocalProfile] = useState<CreatorProfile>(profile);
-  const [localLanding, setLocalLanding] = useState<LandingPageContent>(landingContent);
-  const [localYoutubeKey, setLocalYoutubeKey] = useState<string>(youtubeApiKey);
-  
-  useEffect(() => { setLocalProfile(profile); }, [profile]);
-  useEffect(() => { setLocalLanding(landingContent); }, [landingContent]);
-  useEffect(() => { setLocalYoutubeKey(youtubeApiKey); }, [youtubeApiKey]);
 
-  // File System State
-  const [virtualFiles, setVirtualFiles] = useState<VirtualFile[]>([]);
-  const [newFile, setNewFile] = useState({ path: '', content: '' });
-  
-  // POPUP LISTENER
-  useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
-      // Security check: ensure message comes from same origin
-      if (event.origin !== window.location.origin) return;
-
-      if (event.data.type === 'TIKTOK_CODE') {
-         setIsConnecting(true);
-         const code = event.data.code;
-         const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
-         const secret = tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET;
-         
-         try {
-            const tokens = await exchangeTikTokCode(code, key, secret);
-            setTiktokAuth({
-              accessToken: tokens.accessToken,
-              refreshToken: tokens.refreshToken,
-              expiresAt: Date.now() + (tokens.expiresIn * 1000)
-            });
-            alert("TikTok conectado com sucesso via Pop-up!");
-         } catch (e: any) {
-            console.error(e);
-            alert(`Erro ao conectar TikTok: ${e.message}`);
-         } finally {
-            setIsConnecting(false);
-         }
-      }
-
-      if (event.data.type === 'META_TOKEN') {
-         // Parse the hash sent from popup
-         // format: #access_token=...&expires_in=...
-         try {
-            const hash = event.data.hash.substring(1); // remove #
-            const params = new URLSearchParams(hash);
-            const accessToken = params.get('access_token');
-            const expiresIn = params.get('expires_in');
-            
-            if (accessToken) {
-               const expiry = expiresIn ? Date.now() + (parseInt(expiresIn) * 1000) : Date.now() + (3600 * 1000);
-               setMetaAuth({
-                 accessToken,
-                 expiresAt: expiry
-               });
-               alert("Meta (Facebook/Instagram) conectado com sucesso via Pop-up!");
-            }
-         } catch (e) {
-            console.error(e);
-         }
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [tiktokAuth, setTiktokAuth, setMetaAuth]);
-
-  const [newPost, setNewPost] = useState<Partial<SocialPost>>({
-    platform: Platform.YOUTUBE,
-    title: '',
-    caption: '',
-    thumbnailUrl: 'https://picsum.photos/seed/new/600/400',
-    likes: 0,
-    comments: 0,
-    views: 0
-  });
-
-  useEffect(() => {
-    if (activeView === 'files') {
-      getVirtualFilesCloud().then(setVirtualFiles);
-    }
-  }, [activeView]);
-
-  // SAVE HANDLERS
-  const handleSaveProfileClick = () => {
-    setProfile(localProfile);
-    alert('Perfil salvo com sucesso!');
+  // Helper for inputs
+  const handleProfileChange = (field: keyof CreatorProfile, value: any) => {
+    setProfile({ ...profile, [field]: value });
   };
 
-  const handleSaveLandingClick = () => {
-    setLandingContent(localLanding);
-    alert('Página CMS salva com sucesso!');
+  const handleLandingChange = (field: keyof LandingPageContent, value: any) => {
+    setLandingContent({ ...landingContent, [field]: value });
   };
 
-  const handleSaveYoutubeClick = () => {
-    setYoutubeApiKey(localYoutubeKey);
-    alert('Integração YouTube salva com sucesso!');
-  };
-
-  const handleSaveChatbotClick = () => {
-    setLandingContent(localLanding);
-    alert('Configurações do Chatbot salvas com sucesso!');
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm('Tem certeza que deseja excluir esta postagem?')) {
-      if (dbActions) {
-        dbActions.deletePost(id);
-      } else {
-        setPosts(posts.filter(p => p.id !== id));
-      }
-    }
-  };
-
-  const handleClearAll = () => {
-    if (confirm('Tem certeza que deseja apagar TODAS as postagens? Esta ação não pode ser desfeita.')) {
-      if (dbActions && dbActions.clearPosts) {
-        dbActions.clearPosts();
-      } else {
-        setPosts([]);
-      }
-    }
-  };
-
+  // Sync Logic
   const handleSync = async () => {
     setIsSyncing(true);
     
+    const newStats = {
+      youtubeFollowers: 0,
+      instagramFollowers: 0,
+      tiktokFollowers: 0,
+      facebookFollowers: 0
+    };
+
     try {
       // 1. YouTube
-      const realYoutubePosts = await getYouTubePosts('@MundodosDadosBR', 10, youtubeApiKey);
-      const channelStats = await getYouTubeChannelStatistics('@MundodosDadosBR', youtubeApiKey);
-      if (channelStats && channelStats.subscriberCount) {
-        setProfile({
-          ...profile,
-          subscribers: channelStats.subscriberCount
-        });
+      let realYoutubePosts: SocialPost[] = [];
+      if (youtubeApiKey) {
+         try {
+            realYoutubePosts = await getYouTubePosts('@MundodosDadosBR', 10, youtubeApiKey);
+            const channelStats = await getYouTubeChannelStatistics('@MundodosDadosBR', youtubeApiKey);
+            if (channelStats && channelStats.subscriberCount) {
+                const rawStr = channelStats.subscriberCount;
+                let num = parseFloat(rawStr.replace(/[^0-9.]/g, ''));
+                if (rawStr.toUpperCase().includes('K')) num *= 1000;
+                else if (rawStr.toUpperCase().includes('M')) num *= 1000000;
+                newStats.youtubeFollowers = num;
+            }
+         } catch (e) {
+             console.error("YouTube Sync Error", e);
+         }
       }
 
       // 2. TikTok
-      const tiktokPosts = await getTikTokPosts(
-        '@mundo.dos.dados5', 
-        tiktokAuth.accessToken,
-        tiktokAuth.refreshToken,
-        tiktokAuth.clientKey || DEFAULT_CLIENT_KEY,
-        tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
-        tiktokAuth.expiresAt,
-        (newAccess, newRefresh, newExpiry) => {
-           setTiktokAuth({
-             accessToken: newAccess,
-             refreshToken: newRefresh,
-             expiresAt: newExpiry
-           });
-        }
-      );
+      let tiktokPosts: SocialPost[] = [];
+      if (tiktokAuth.accessToken) {
+        try {
+            const ttStats = await getTikTokUserStats(tiktokAuth.accessToken);
+            newStats.tiktokFollowers = ttStats.followers;
 
-      // 3. Instagram & Facebook (Meta)
+            tiktokPosts = await getTikTokPosts(
+            '@mundo.dos.dados5', 
+            tiktokAuth.accessToken,
+            tiktokAuth.refreshToken,
+            tiktokAuth.clientKey || DEFAULT_CLIENT_KEY,
+            tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
+            tiktokAuth.expiresAt,
+            (newAccess, newRefresh, newExpiry) => {
+                setTiktokAuth({
+                    accessToken: newAccess,
+                    refreshToken: newRefresh,
+                    expiresAt: newExpiry
+                });
+            }
+            );
+        } catch (ttErr) {
+            console.error("TikTok Sync Error", ttErr);
+        }
+      }
+
+      // 3. Meta
       let igPosts: SocialPost[] = [];
       let fbPosts: SocialPost[] = [];
-      
       if (metaAuth.accessToken) {
         try {
+          const metaStats = await getMetaPlatformStats(metaAuth.accessToken);
+          newStats.instagramFollowers = metaStats.instagram;
+          newStats.facebookFollowers = metaStats.facebook;
+
           igPosts = await getInstagramPosts(metaAuth.accessToken);
           fbPosts = await getFacebookPosts(metaAuth.accessToken);
         } catch (metaError) {
@@ -267,710 +134,433 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
+      // 4. Update Profile
+      const totalFollowers = 
+        newStats.youtubeFollowers + 
+        newStats.instagramFollowers + 
+        newStats.tiktokFollowers + 
+        newStats.facebookFollowers;
+
+      const formatCount = (n: number) => {
+        return new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(n);
+      };
+
+      const updatedProfile = {
+        ...profile,
+        subscribers: formatCount(totalFollowers),
+        platformStats: newStats
+      };
+      
+      setProfile(updatedProfile);
+
       const combinedPosts = [...realYoutubePosts, ...tiktokPosts, ...igPosts, ...fbPosts];
       
       if (dbActions) {
         dbActions.syncPosts(combinedPosts);
-        
-        // Custom Alert message based on results
-        let msg = `Sincronização concluída!\n\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nInstagram: ${igPosts.length}\nFacebook: ${fbPosts.length}`;
-        
-        if (metaAuth.accessToken && igPosts.length === 0 && fbPosts.length > 0) {
-           msg += `\n\n⚠️ AVISO: Facebook conectado, mas nenhum post do Instagram encontrado. Use o botão de diagnóstico na aba Integrações.`;
-        }
-
+        let msg = `Sincronização concluída!\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nInstagram: ${igPosts.length}\nFacebook: ${fbPosts.length}`;
         alert(msg);
       } else {
-        setPosts((prev: any) => {
-          const newItems = [...combinedPosts];
-          return [...newItems, ...prev];
-        });
+        setPosts(combinedPosts);
       }
 
     } catch (error: any) {
       console.error(error);
-      const errorMessage = error.message || 'Erro desconhecido';
-      alert(`Erro parcial na sincronização: ${errorMessage}`);
+      alert(`Erro na sincronização: ${error.message}`);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // --- CONNECT HANDLERS (POP-UP) ---
-  const handleConnectTikTok = () => {
-     const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
-     if (!key) {
-       alert("Por favor, insira o Client Key.");
-       return;
-     }
-     
-     setTiktokAuth({ 
-       clientKey: key, 
-       clientSecret: tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET 
-     });
-
-     const url = getTikTokAuthUrl(key);
-     window.open(url, 'TikTok Auth', 'width=600,height=700,status=yes,scrollbars=yes');
+  const startTikTokAuth = () => {
+     window.location.href = getTikTokAuthUrl(tiktokAuth.clientKey || DEFAULT_CLIENT_KEY);
   };
 
-  const handleConnectMeta = (forceRerequest: boolean = false) => {
-    if (!metaAuth.appId) {
-      alert("Por favor, insira o App ID do Facebook.");
-      return;
-    }
-    const url = getMetaAuthUrl(metaAuth.appId, forceRerequest);
-    window.open(url, 'Meta Auth', 'width=600,height=700,status=yes,scrollbars=yes');
+  const startMetaAuth = () => {
+     window.location.href = getMetaAuthUrl(metaAuth.appId || '1146266013233342'); // ID fallback
   };
-
-  const handleDisconnect = (platform: Platform) => {
-    if (confirm(`Desconectar conta do ${platform}?`)) {
-      if (platform === Platform.TIKTOK) {
-        setTiktokAuth({ accessToken: '', refreshToken: '', expiresAt: 0 });
-      } else if (platform === Platform.INSTAGRAM || platform === Platform.FACEBOOK) {
-        setMetaAuth({ accessToken: '', expiresAt: 0 });
-        setDebugLogs([]); // clear logs
-      }
-    }
-  };
-  
-  const handleDebugMeta = async () => {
-    setIsDebugLoading(true);
-    setDebugLogs([]);
-    const logs = await debugMetaConnection(metaAuth.accessToken);
-    setDebugLogs(logs);
-    setIsDebugLoading(false);
-  };
-
-  const handleAddPost = (e: React.FormEvent) => {
-    e.preventDefault();
-    const id = `manual-${Date.now()}`;
-    const postToAdd = {
-      ...newPost,
-      id,
-      date: new Date().toISOString(),
-      url: '#'
-    } as SocialPost;
-    
-    if (dbActions) {
-      dbActions.addPost(postToAdd);
-    } else {
-      setPosts([postToAdd, ...posts]);
-    }
-
-    setIsAddModalOpen(false);
-    setNewPost({
-      platform: Platform.YOUTUBE,
-      title: '',
-      caption: '',
-      thumbnailUrl: 'https://picsum.photos/seed/new/600/400',
-      likes: 0,
-      comments: 0,
-      views: 0
-    });
-  };
-
-  // ... (Other handlers unchanged)
-  const handleSaveFile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFile.path || !newFile.content) return;
-    await saveVirtualFile({ ...newFile, type: 'text/plain' });
-    const files = await getVirtualFilesCloud();
-    setVirtualFiles(files);
-    setNewFile({ path: '', content: '' });
-  };
-  const handleDeleteFile = async (path: string) => {
-    await deleteVirtualFile(path);
-    const files = await getVirtualFilesCloud();
-    setVirtualFiles(files);
-  };
-  const handleAddFeature = () => {
-    const newFeature: FeatureItem = { id: Date.now().toString(), title: 'Nova Seção', description: 'Descrição', icon: 'Star' };
-    setLocalLanding({ ...localLanding, features: [...(localLanding.features || []), newFeature] });
-  };
-  const handleRemoveFeature = (id: string) => {
-    setLocalLanding({ ...localLanding, features: localLanding.features.filter(f => f.id !== id) });
-  };
-  const handleUpdateFeature = (id: string, field: keyof FeatureItem, value: string) => {
-    setLocalLanding({ ...localLanding, features: localLanding.features.map(f => f.id === id ? { ...f, [field]: value } : f) });
-  };
-
-  const isTikTokConnected = !!tiktokAuth.accessToken;
-  const isMetaConnected = !!metaAuth.accessToken;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 hidden md:flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b border-slate-800">
-           <span className="font-bold text-lg text-indigo-400">Portal Admin</span>
-        </div>
-        <nav className="p-4 space-y-2 flex-grow">
-          {['content', 'integrations', 'chatbot', 'files', 'pages', 'profile'].map((view) => (
-             <button 
-                key={view}
-                onClick={() => setActiveView(view as AdminView)}
-                className={`w-full px-4 py-2 flex items-center space-x-3 rounded-lg transition-colors capitalize ${activeView === view ? 'bg-indigo-600/20 text-indigo-300' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-             >
-                {view === 'content' && <LayoutDashboard size={18} />}
-                {view === 'integrations' && <Link2 size={18} />}
-                {view === 'chatbot' && <Bot size={18} />}
-                {view === 'files' && <FileText size={18} />}
-                {view === 'pages' && <Video size={18} />}
-                {view === 'profile' && <Users size={18} />}
-                <span>{view === 'content' ? 'Conteúdo' : view === 'pages' ? 'Páginas (CMS)' : view === 'profile' ? 'Seu Perfil' : view === 'chatbot' ? 'Chatbot (IA)' : view === 'files' ? 'Arquivos & DNS' : 'Integrações'}</span>
-             </button>
-          ))}
-           <div className="pt-4 mt-4 border-t border-slate-800">
-             <button 
-              onClick={onViewPortal}
-              className="text-emerald-400 hover:text-emerald-300 hover:bg-slate-800 px-4 py-2 flex items-center space-x-3 w-full rounded-lg transition-colors"
-            >
-               <Eye size={18} />
-               <span>Ver Portal Público</span>
-            </button>
-           </div>
-        </nav>
-        <div className="p-4 border-t border-slate-800">
-          <button 
-            onClick={onLogout}
-            className="flex items-center space-x-2 text-slate-400 hover:text-red-400 transition-colors w-full px-4 py-2"
-          >
-            <LogOut size={18} />
-            <span>Sair</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-grow flex flex-col h-screen overflow-hidden">
-        
-        {/* HEADER VIEWS */}
-        {activeView === 'content' && (
-          <>
-            <header className="h-16 bg-slate-900/50 backdrop-blur border-b border-slate-800 flex items-center justify-between px-6">
-              <h1 className="text-xl font-semibold">Gerenciar Postagens</h1>
-              <div className="flex space-x-3">
-                <button 
-                  onClick={handleClearAll}
-                  className="bg-red-900/30 hover:bg-red-900/50 text-red-400 hover:text-red-300 px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium border border-red-900/50"
-                  title="Apagar todos os posts"
-                >
-                  <Trash2 size={16} />
-                  <span>Limpar Tudo</span>
-                </button>
-                <div className="w-px h-8 bg-slate-800 mx-2"></div>
-                <button 
-                  onClick={handleSync}
-                  disabled={isSyncing}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium border border-slate-700"
-                >
-                  <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
-                  <span>{isSyncing ? 'Conectando APIs...' : 'Sincronizar Tudo'}</span>
-                </button>
-                <button 
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm font-medium"
-                >
-                  <Plus size={16} />
-                  <span>Manual</span>
-                </button>
-              </div>
-            </header>
-
-            <div className="flex-grow overflow-y-auto p-6">
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-slate-800/50 text-slate-400 text-sm border-b border-slate-800">
-                      <th className="px-6 py-4 font-medium">Conteúdo</th>
-                      <th className="px-6 py-4 font-medium">Origem</th>
-                      <th className="px-6 py-4 font-medium">Estatísticas</th>
-                      <th className="px-6 py-4 font-medium text-right">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {posts.length === 0 ? (
-                       <tr>
-                         <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
-                           <CloudLightning className="mx-auto mb-2 opacity-50" size={32} />
-                           <p>Nenhuma postagem no Banco de Dados.</p>
-                           <p className="text-sm">Clique em "Sincronizar Tudo" para buscar dados reais.</p>
-                         </td>
-                       </tr>
-                    ) : (
-                      posts.map((post) => (
-                        <tr key={post.id} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center space-x-4">
-                              <img 
-                                src={post.thumbnailUrl || 'https://via.placeholder.com/150'} 
-                                alt="" 
-                                className="w-16 h-12 object-cover rounded bg-slate-800"
-                              />
-                              <div className="max-w-xs">
-                                <div className="font-medium truncate text-white">{post.title || post.caption || 'Sem título'}</div>
-                                <div className="text-xs text-slate-500">
-                                  {new Date(post.date).toLocaleDateString()}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="inline-flex items-center space-x-1 px-2 py-1 rounded-md text-xs font-medium border border-slate-700 bg-slate-800">
-                              {post.platform === Platform.YOUTUBE && <Youtube size={12} className="text-red-500" />}
-                              {post.platform === Platform.TIKTOK && <TikTokIcon className="w-3 h-3 text-white" />}
-                              {post.platform === Platform.INSTAGRAM && <Instagram size={12} className="text-fuchsia-500" />}
-                              {post.platform === Platform.FACEBOOK && <Facebook size={12} className="text-blue-500" />}
-                              <span>{post.platform}</span>
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-400">
-                            <div className="flex flex-col space-y-1">
-                              <span>❤️ {post.likes.toLocaleString('pt-BR')}</span>
-                              <span>💬 {post.comments.toLocaleString('pt-BR')}</span>
-                              {post.views > 0 && <span>👁️ {post.views.toLocaleString('pt-BR')}</span>}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <button 
-                              onClick={() => handleDelete(post.id)}
-                              className="text-slate-500 hover:text-red-400 transition-colors"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+        {/* Sidebar */}
+        <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col fixed h-full z-10">
+            <div className="p-6 border-b border-slate-800">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                    <LayoutDashboard className="text-indigo-500" />
+                    Admin
+                </h2>
             </div>
-          </>
-        )}
-        
-        {/* Integrations View */}
-        {activeView === 'integrations' && (
-          <>
-             <header className="h-16 bg-slate-900/50 backdrop-blur border-b border-slate-800 flex items-center justify-between px-6">
-              <h1 className="text-xl font-semibold">Conexões de Plataforma</h1>
-            </header>
-            <div className="p-8 overflow-y-auto">
-              <div className="max-w-4xl mx-auto">
-                <div className="bg-indigo-900/20 border border-indigo-500/30 rounded-xl p-6 mb-8 flex items-start space-x-4">
-                  <div className="bg-indigo-500/20 p-2 rounded-lg">
-                    <CloudLightning className="text-indigo-400" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-indigo-100 font-bold text-lg mb-1">Sincronização Automática</h3>
-                    <p className="text-indigo-200/70 text-sm">
-                      Ao conectar suas contas abaixo, o CreatorNexus importará automaticamente seus novos vídeos e postagens.
-                    </p>
-                  </div>
-                </div>
+            <nav className="flex-grow p-4 space-y-2">
+                <button 
+                    onClick={() => setActiveTab('dashboard')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
+                >
+                    <LayoutDashboard size={20} /> Dashboard
+                </button>
+                <button 
+                    onClick={() => setActiveTab('integrations')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'integrations' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
+                >
+                    <RefreshCw size={20} /> Integrações
+                </button>
+                <button 
+                    onClick={() => setActiveTab('content')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'content' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
+                >
+                    <Settings size={20} /> Conteúdo & Perfil
+                </button>
+                <button 
+                    onClick={() => setActiveTab('posts')}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'posts' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
+                >
+                    <Eye size={20} /> Posts ({posts.length})
+                </button>
+            </nav>
+            <div className="p-4 border-t border-slate-800 space-y-2">
+                <button 
+                    onClick={onViewPortal}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-white transition-colors"
+                >
+                    <Eye size={18} /> Ver Portal
+                </button>
+                <button 
+                    onClick={onLogout}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-red-400 hover:text-red-300 transition-colors"
+                >
+                    <LogOut size={18} /> Sair
+                </button>
+            </div>
+        </aside>
 
-                {isConnecting && (
-                  <div className="bg-teal-500/10 border border-teal-500/30 text-teal-300 p-4 rounded-xl mb-6 flex items-center justify-center gap-2 animate-pulse">
-                     <RefreshCw className="animate-spin" />
-                     <span>Aguardando autenticação na janela Pop-up...</span>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* YouTube */}
-                  <div className={`p-6 rounded-xl border transition-all bg-slate-900 border-emerald-500/30`}>
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white">
-                          <Youtube size={20} />
+        {/* Main Content */}
+        <main className="ml-64 flex-1 p-8 overflow-y-auto">
+            {activeTab === 'dashboard' && (
+                <div className="space-y-6">
+                    <h1 className="text-3xl font-bold">Visão Geral</h1>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                            <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Total Posts</h3>
+                            <p className="text-3xl font-bold">{posts.length}</p>
                         </div>
-                        <div>
-                          <h4 className="font-bold">YouTube</h4>
-                          <p className="text-xs text-slate-500">Integração API v3</p>
+                        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                            <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">YouTube Subs</h3>
+                            <p className="text-3xl font-bold">{profile.platformStats?.youtubeFollowers?.toLocaleString() || '-'}</p>
                         </div>
-                      </div>
-                      <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                        <CheckCircle size={12} /> Ativo
-                      </span>
+                        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                             <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Instagram Followers</h3>
+                             <p className="text-3xl font-bold">{profile.platformStats?.instagramFollowers?.toLocaleString() || '-'}</p>
+                        </div>
+                        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                             <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">TikTok Followers</h3>
+                             <p className="text-3xl font-bold">{profile.platformStats?.tiktokFollowers?.toLocaleString() || '-'}</p>
+                        </div>
                     </div>
                     
-                    <div className="mt-4 space-y-2">
-                       <label className="text-xs text-slate-400">Chave de API do YouTube</label>
-                       <div className="flex gap-2">
-                         <input 
-                           type="password" 
-                           value={localYoutubeKey}
-                           onChange={(e) => setLocalYoutubeKey(e.target.value)}
-                           placeholder="Cole sua API Key aqui"
-                           className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-red-500 focus:outline-none"
-                         />
-                         <button
-                           onClick={handleSaveYoutubeClick}
-                           className="bg-slate-800 hover:bg-slate-700 text-white px-3 rounded border border-slate-700"
-                           title="Salvar Chave"
+                    <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                         <h3 className="text-xl font-bold mb-4">Ações Rápidas</h3>
+                         <button 
+                            onClick={handleSync}
+                            disabled={isSyncing}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 disabled:opacity-50"
                          >
-                           <Save size={16} />
+                            <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
+                            {isSyncing ? "Sincronizando..." : "Sincronizar Todas as Redes"}
                          </button>
-                       </div>
                     </div>
-                  </div>
-
-                  {/* TikTok */}
-                  <div className={`p-6 rounded-xl border transition-all ${isTikTokConnected ? 'bg-slate-900 border-emerald-500/30' : 'bg-slate-900 border-slate-800'}`}>
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-teal-400 rounded-full flex items-center justify-center text-black">
-                          <TikTokIcon className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold">TikTok</h4>
-                          <p className="text-xs text-slate-500">OAuth 2.0</p>
-                        </div>
-                      </div>
-                      {isTikTokConnected ? (
-                         <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                           <CheckCircle size={12} /> Conectado
-                         </span>
-                      ) : (
-                        <span className="bg-slate-700 text-slate-400 text-xs px-2 py-1 rounded-full">
-                           Não Conectado
-                         </span>
-                      )}
-                    </div>
-                    
-                    <div className="mt-4 space-y-3">
-                       <div>
-                         <label className="text-xs text-slate-400">Client Key</label>
-                         <input 
-                           type="text" 
-                           value={tiktokAuth.clientKey || DEFAULT_CLIENT_KEY}
-                           onChange={(e) => setTiktokAuth({ ...tiktokAuth, clientKey: e.target.value })}
-                           className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white mb-2"
-                         />
-                       </div>
-                       <div>
-                          <label className="text-xs text-slate-400 flex items-center gap-1">Client Secret <Lock size={10} /></label>
-                          <input 
-                            type="password" 
-                            value={tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET}
-                            onChange={(e) => setTiktokAuth({ ...tiktokAuth, clientSecret: e.target.value })}
-                            className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white"
-                          />
-                       </div>
-                       
-                       <div className="bg-slate-950 p-2 rounded border border-slate-800 text-[10px] text-slate-500">
-                          Redirect URI: {getRedirectUri()}
-                       </div>
-
-                       <button 
-                        onClick={() => isTikTokConnected ? handleDisconnect(Platform.TIKTOK) : handleConnectTikTok()}
-                        className={`w-full py-2 rounded-lg text-sm font-medium transition-colors border mt-2 ${isTikTokConnected ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-teal-500 hover:bg-teal-400 text-slate-900 border-teal-500'}`}
-                      >
-                        {isTikTokConnected ? 'Desconectar TikTok' : 'Autorizar e Conectar (Pop-up)'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* META (FACEBOOK / INSTAGRAM) */}
-                  <div className={`col-span-1 md:col-span-2 p-6 rounded-xl border transition-all ${isMetaConnected ? 'bg-slate-900 border-emerald-500/30' : 'bg-slate-900 border-slate-800'}`}>
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="flex -space-x-2">
-                           <div className="w-10 h-10 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500 rounded-full flex items-center justify-center text-white ring-2 ring-slate-900 z-10">
-                              <Instagram size={20} />
-                           </div>
-                           <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white ring-2 ring-slate-900">
-                              <Facebook size={20} />
-                           </div>
-                        </div>
-                        <div>
-                          <h4 className="font-bold">Meta (Instagram & Facebook)</h4>
-                          <p className="text-xs text-slate-500">Graph API v19.0</p>
-                        </div>
-                      </div>
-                      {isMetaConnected ? (
-                         <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                           <CheckCircle size={12} /> Conectado
-                         </span>
-                      ) : (
-                        <span className="bg-slate-700 text-slate-400 text-xs px-2 py-1 rounded-full">
-                           Não Conectado
-                         </span>
-                      )}
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                       <div>
-                          <label className="block text-xs text-slate-400 mb-1">Facebook App ID</label>
-                          <input 
-                            type="text" 
-                            value={metaAuth.appId || ''}
-                            onChange={(e) => setMetaAuth({ ...metaAuth, appId: e.target.value })}
-                            placeholder="Ex: 1234567890"
-                            className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
-                          />
-                          <p className="text-[10px] text-slate-500 mt-1">
-                             Use o App ID do painel <a href="https://developers.facebook.com/apps" target="_blank" className="underline hover:text-blue-400">Meta Developers</a>.
-                          </p>
-                       </div>
-                       
-                       <div>
-                          <div className="bg-slate-950 p-3 rounded border border-slate-800 mb-2 space-y-2">
-                             <div>
-                               <p className="text-[10px] text-slate-500 font-bold">1. Adicione este Domínio em 'App Domains':</p>
-                               <div className="text-[10px] text-indigo-300 font-mono select-all cursor-text bg-slate-900 p-1 rounded">
-                                  {window.location.hostname}
-                               </div>
-                             </div>
-                             <div>
-                               <p className="text-[10px] text-slate-500 font-bold">2. Adicione esta URL em 'Valid OAuth Redirect URIs':</p>
-                               <div className="text-[10px] text-indigo-300 font-mono select-all cursor-text bg-slate-900 p-1 rounded break-all">
-                                  {getMetaRedirectUri()}
-                               </div>
-                             </div>
-                          </div>
-                          
-                          <div className="flex gap-2">
-                             <button 
-                                onClick={handleDebugMeta}
-                                disabled={!isMetaConnected || isDebugLoading}
-                                className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 rounded-lg flex items-center justify-center transition-colors"
-                                title="Diagnosticar Conexão"
-                              >
-                                {isDebugLoading ? <RefreshCw className="animate-spin" size={16} /> : <Zap size={16} />}
-                             </button>
-                             <button 
-                                onClick={() => handleConnectMeta(true)} 
-                                disabled={!metaAuth.appId}
-                                className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-3 rounded-lg flex items-center justify-center transition-colors text-xs font-bold"
-                                title="Re-autorizar Permissões (Correção)"
-                              >
-                                Re-autorizar
-                             </button>
-                             
-                             {/* HARD RESET BUTTON */}
-                             <a 
-                                href="https://www.facebook.com/settings?tab=business_tools" 
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-3 rounded-lg flex items-center justify-center transition-colors text-xs font-bold"
-                                title="Resetar Permissões no Facebook (Hard Reset)"
-                             >
-                                Resetar
-                             </a>
-
-                             <button 
-                                onClick={() => isMetaConnected ? handleDisconnect(Platform.FACEBOOK) : handleConnectMeta(false)}
-                                className={`flex-grow py-2 rounded-lg text-sm font-medium transition-colors border ${isMetaConnected ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-blue-600 hover:bg-blue-500 text-white border-blue-600'}`}
-                              >
-                                {isMetaConnected ? 'Desconectar Meta' : 'Conectar (Pop-up)'}
-                              </button>
-                          </div>
-                       </div>
-                    </div>
-
-                    {/* DEBUG LOG VIEWER */}
-                    {debugLogs.length > 0 && (
-                      <div className="mt-4 bg-slate-950 p-4 rounded-lg border border-slate-800 animate-fade-in">
-                        <div className="flex justify-between items-center mb-2 border-b border-slate-800 pb-2">
-                          <h4 className="text-xs font-bold text-slate-400">Relatório de Diagnóstico</h4>
-                          <button onClick={() => setDebugLogs([])} className="text-slate-600 hover:text-white"><X size={14} /></button>
-                        </div>
-                        <pre className="text-[10px] font-mono text-slate-300 whitespace-pre-wrap h-32 overflow-y-auto">
-                          {debugLogs.map((log, i) => (
-                            <div key={i} className={log.includes('ERRO') || log.includes('ALERTA') ? 'text-red-400' : log.includes('SUCESSO') ? 'text-emerald-400' : ''}>
-                              {log}
-                            </div>
-                          ))}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-
                 </div>
-              </div>
-            </div>
-          </>
-        )}
-        
-        {/* CHATBOT VIEW */}
-        {activeView === 'chatbot' && (
-           <>
-            <header className="h-16 bg-slate-900/50 backdrop-blur border-b border-slate-800 flex items-center justify-between px-6">
-              <h1 className="text-xl font-semibold flex items-center gap-2">
-                 <Bot size={20} className="text-indigo-400" />
-                 <span>Configurar Chatbot IA (Notebook)</span>
-              </h1>
-            </header>
-            <div className="flex-grow overflow-y-auto p-8">
-               <div className="max-w-3xl mx-auto bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
-                 <div className="mb-6">
-                    <h3 className="text-lg font-bold text-white mb-2">Base de Conhecimento (Contexto)</h3>
-                    <textarea 
-                       rows={12}
-                       className="w-full bg-slate-950 border border-slate-700 rounded-lg p-4 text-white text-sm font-mono"
-                       value={localLanding.chatbotConfig?.knowledgeBase || ''}
-                       onChange={(e) => setLocalLanding({
-                          ...localLanding,
-                          chatbotConfig: { 
-                             ...(localLanding.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' }),
-                             knowledgeBase: e.target.value 
-                          }
-                       })}
-                    />
-                 </div>
-                 <div className="pt-6 border-t border-slate-800 flex justify-end">
-                      <button onClick={handleSaveChatbotClick} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg flex items-center gap-2">
-                        <Save size={18} /> <span>Salvar Chatbot</span>
-                      </button>
-                 </div>
-               </div>
-            </div>
-           </>
-        )}
+            )}
 
-        {/* FILE MANAGER VIEW */}
-        {activeView === 'files' && (
-          <>
-            <header className="h-16 bg-slate-900/50 backdrop-blur border-b border-slate-800 flex items-center justify-between px-6">
-              <h1 className="text-xl font-semibold">Arquivos de Verificação e DNS</h1>
-            </header>
-            <div className="flex-grow overflow-y-auto p-6">
-               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-6 h-fit">
-                     <h3 className="font-bold text-white mb-4 flex items-center gap-2"><UploadCloud size={20} /> Adicionar Arquivo</h3>
-                     <form onSubmit={handleSaveFile} className="space-y-4">
-                        <input type="text" value={newFile.path} onChange={(e) => setNewFile({...newFile, path: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" placeholder="ex: ads.txt" required />
-                        <textarea rows={8} value={newFile.content} onChange={(e) => setNewFile({...newFile, content: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white font-mono text-xs" required />
-                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg flex items-center justify-center space-x-2"><Plus size={18} /> <span>Salvar</span></button>
-                     </form>
-                  </div>
-                  <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden h-fit">
-                    <div className="p-4 border-b border-slate-800 bg-slate-800/30"><h3 className="font-bold text-white">Arquivos Hospedados</h3></div>
-                    <div className="divide-y divide-slate-800">
-                         {virtualFiles.map((file, idx) => (
-                           <div key={idx} className="p-4 flex items-start justify-between hover:bg-slate-800/30 transition-colors">
-                              <div className="overflow-hidden mr-4">
-                                 <div className="flex items-center gap-2 mb-1"><FileText size={16} /><span className="font-mono font-bold text-white truncate">/{file.path}</span></div>
-                              </div>
-                              <button onClick={() => handleDeleteFile(file.path)} className="text-slate-500 hover:text-red-400 p-2"><Trash2 size={18} /></button>
-                           </div>
-                         ))}
-                    </div>
-                  </div>
-               </div>
-            </div>
-          </>
-        )}
-
-        {/* PROFILE VIEW */}
-        {activeView === 'profile' && (
-          <>
-            <header className="h-16 bg-slate-900/50 backdrop-blur border-b border-slate-800 flex items-center justify-between px-6">
-              <h1 className="text-xl font-semibold">Editar Perfil do Portal</h1>
-            </header>
-            <div className="flex-grow overflow-y-auto p-8">
-              <div className="max-w-2xl mx-auto bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
-                 <div className="space-y-6">
-                    <input type="text" value={localProfile.name} onChange={(e) => setLocalProfile({...localProfile, name: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" />
-                    <button onClick={handleSaveProfileClick} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg flex items-center gap-2"><Save size={18} /> <span>Salvar Perfil</span></button>
-                 </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* CMS View (Pages) */}
-        {activeView === 'pages' && (
-           <>
-            <header className="h-16 bg-slate-900/50 backdrop-blur border-b border-slate-800 flex items-center justify-between px-6">
-              <h1 className="text-xl font-semibold">Editar Página Institucional (CMS)</h1>
-            </header>
-            <div className="flex-grow overflow-y-auto p-8">
-              <div className="max-w-3xl mx-auto bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
-                 <div className="space-y-6">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Título Principal (Headline)</label>
-                        <input type="text" value={localLanding.headline} onChange={(e) => setLocalLanding({...localLanding, headline: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" />
-                    </div>
-                    
-                    <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Subtítulo</label>
-                        <textarea rows={3} value={localLanding.subheadline} onChange={(e) => setLocalLanding({...localLanding, subheadline: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                           <label className="block text-sm font-medium text-slate-400 mb-1">Texto do Botão (CTA)</label>
-                           <input type="text" value={localLanding.ctaButtonText} onChange={(e) => setLocalLanding({...localLanding, ctaButtonText: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" />
+            {activeTab === 'integrations' && (
+                <div className="max-w-4xl space-y-8">
+                     <h1 className="text-3xl font-bold">Integrações</h1>
+                     
+                     {/* YouTube */}
+                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                        <div className="flex items-center gap-3 mb-4 text-red-500">
+                            <Youtube size={24} />
+                            <h2 className="text-xl font-bold text-white">YouTube Data API</h2>
                         </div>
-                        <div>
-                           <label className="block text-sm font-medium text-slate-400 mb-1">URL do Logo</label>
-                           <input type="text" value={localLanding.logoUrl || ''} onChange={(e) => setLocalLanding({...localLanding, logoUrl: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" placeholder="https://..." />
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-1">API Key</label>
+                                <input 
+                                    type="password" 
+                                    value={youtubeApiKey}
+                                    onChange={(e) => setYoutubeApiKey(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-red-500 focus:outline-none"
+                                    placeholder="AIza..."
+                                />
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div className="pt-6 border-t border-slate-800">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-semibold text-white">Seções de Recursos</h3>
-                        <button onClick={handleAddFeature} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded flex items-center gap-1"><Plus size={14} /> Adicionar</button>
-                      </div>
-                      <div className="space-y-4">
-                        {localLanding.features && localLanding.features.map((feature) => (
-                          <div key={feature.id} className="bg-slate-950 border border-slate-700 rounded-lg p-4 relative group">
-                             <div className="flex justify-between items-start mb-3">
-                               <input type="text" value={feature.title} onChange={(e) => handleUpdateFeature(feature.id, 'title', e.target.value)} className="bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white font-bold" placeholder="Título do Recurso" />
-                               
-                               <div className="flex items-center gap-2">
-                                  <div className="relative group/icon">
-                                     <div className="w-8 h-8 bg-slate-800 rounded flex items-center justify-center cursor-pointer border border-slate-700">
-                                        {React.createElement(AvailableIcons[feature.icon] || AvailableIcons['Star'], { size: 16 })}
-                                     </div>
-                                     {/* Simple Icon Picker Dropdown */}
-                                     <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700 rounded-lg p-2 grid grid-cols-4 gap-2 hidden group-hover/icon:grid z-20 shadow-xl">
-                                        {Object.keys(AvailableIcons).map(iconName => (
-                                           <button key={iconName} onClick={() => handleUpdateFeature(feature.id, 'icon', iconName)} className={`p-1.5 rounded hover:bg-indigo-500/20 ${feature.icon === iconName ? 'bg-indigo-500/40 text-indigo-400' : 'text-slate-400'}`}>
-                                              {React.createElement(AvailableIcons[iconName], { size: 16 })}
-                                           </button>
-                                        ))}
-                                     </div>
-                                  </div>
-                                  <button onClick={() => handleRemoveFeature(feature.id)} className="text-slate-600 hover:text-red-400 p-1"><Trash2 size={16} /></button>
-                               </div>
+                     </div>
+
+                     {/* TikTok */}
+                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                        <div className="flex items-center gap-3 mb-4 text-teal-400">
+                            <TikTokIcon className="w-6 h-6" />
+                            <h2 className="text-xl font-bold text-white">TikTok for Developers</h2>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                             <div>
+                                <label className="block text-sm text-slate-400 mb-1">Client Key</label>
+                                <input 
+                                    type="text" 
+                                    value={tiktokAuth.clientKey || ''}
+                                    onChange={(e) => setTiktokAuth({ clientKey: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-teal-500 focus:outline-none"
+                                />
+                            </div>
+                             <div>
+                                <label className="block text-sm text-slate-400 mb-1">Client Secret</label>
+                                <input 
+                                    type="password" 
+                                    value={tiktokAuth.clientSecret || ''}
+                                    onChange={(e) => setTiktokAuth({ clientSecret: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-teal-500 focus:outline-none"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between bg-slate-950 p-4 rounded-lg">
+                             <div className="text-sm">
+                                <span className="text-slate-400">Status: </span>
+                                {tiktokAuth.accessToken ? (
+                                    <span className="text-emerald-400 font-bold">Conectado</span>
+                                ) : (
+                                    <span className="text-slate-500">Desconectado</span>
+                                )}
                              </div>
-                             <textarea value={feature.description} onChange={(e) => handleUpdateFeature(feature.id, 'description', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-slate-300" rows={2} placeholder="Descrição do recurso..." />
-                          </div>
-                        ))}
-                      </div>
+                             <button 
+                                onClick={startTikTokAuth}
+                                className="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2 rounded-lg text-sm font-bold"
+                             >
+                                {tiktokAuth.accessToken ? "Reconectar TikTok" : "Conectar TikTok"}
+                             </button>
+                        </div>
+                     </div>
+
+                     {/* Meta */}
+                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                        <div className="flex items-center gap-3 mb-4 text-blue-500">
+                            <Facebook size={24} />
+                            <Instagram size={24} className="text-fuchsia-500" />
+                            <h2 className="text-xl font-bold text-white">Meta (Facebook & Instagram)</h2>
+                        </div>
+                         <div className="mb-4">
+                             <label className="block text-sm text-slate-400 mb-1">App ID</label>
+                             <input 
+                                type="text" 
+                                value={metaAuth.appId || ''}
+                                onChange={(e) => setMetaAuth({ appId: e.target.value })}
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none"
+                            />
+                        </div>
+                        <div className="flex items-center justify-between bg-slate-950 p-4 rounded-lg">
+                             <div className="text-sm">
+                                <span className="text-slate-400">Status: </span>
+                                {metaAuth.accessToken ? (
+                                    <span className="text-emerald-400 font-bold">Conectado</span>
+                                ) : (
+                                    <span className="text-slate-500">Desconectado</span>
+                                )}
+                             </div>
+                             <button 
+                                onClick={startMetaAuth}
+                                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold"
+                             >
+                                {metaAuth.accessToken ? "Reconectar Meta" : "Conectar Meta"}
+                             </button>
+                        </div>
+                        {metaAuth.accessToken && (
+                            <button 
+                                onClick={async () => {
+                                    const logs = await debugMetaConnection(metaAuth.accessToken);
+                                    alert(logs.join('\n'));
+                                }}
+                                className="mt-2 text-xs text-slate-500 hover:text-white underline"
+                            >
+                                Diagnóstico de Conexão
+                            </button>
+                        )}
+                     </div>
+                </div>
+            )}
+
+            {activeTab === 'content' && (
+                <div className="max-w-4xl space-y-8">
+                    <h1 className="text-3xl font-bold">Perfil & Conteúdo</h1>
+                    
+                    {/* Profile */}
+                    <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                             <Users size={20} className="text-indigo-400" /> Perfil do Criador
+                        </h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-sm text-slate-400">Nome de Exibição</label>
+                                <input type="text" value={profile.name} onChange={(e) => handleProfileChange('name', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Handle (@usuario)</label>
+                                <input type="text" value={profile.handle} onChange={(e) => handleProfileChange('handle', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            </div>
+                             <div className="md:col-span-2">
+                                <label className="text-sm text-slate-400">Avatar URL</label>
+                                <input type="text" value={profile.avatarUrl} onChange={(e) => handleProfileChange('avatarUrl', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="text-sm text-slate-400">Bio</label>
+                                <textarea value={profile.bio} onChange={(e) => handleProfileChange('bio', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-20" />
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="pt-6 border-t border-slate-800 flex justify-end">
-                      <button onClick={handleSaveLandingClick} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg flex items-center gap-2"><Save size={18} /> <span>Salvar Página CMS</span></button>
+                    {/* Landing Page */}
+                    <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                             <LayoutDashboard size={20} className="text-indigo-400" /> Landing Page
+                        </h2>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-sm text-slate-400">Título Principal (Headline)</label>
+                                <input type="text" value={landingContent.headline} onChange={(e) => handleLandingChange('headline', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Subtítulo</label>
+                                <textarea value={landingContent.subheadline} onChange={(e) => handleLandingChange('subheadline', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-20" />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Texto do Botão CTA</label>
+                                <input type="text" value={landingContent.ctaButtonText} onChange={(e) => handleLandingChange('ctaButtonText', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            </div>
+                        </div>
                     </div>
-                 </div>
-              </div>
-            </div>
-           </>
-        )}
 
-      </main>
+                     {/* Chatbot Config */}
+                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                             <Bot size={20} className="text-indigo-400" /> Configuração do Chatbot (Gemini)
+                        </h2>
+                         <div className="space-y-4">
+                            <div className="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    checked={landingContent.chatbotConfig?.enabled ?? true} 
+                                    onChange={(e) => {
+                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
+                                        setLandingContent({ 
+                                            ...landingContent, 
+                                            chatbotConfig: { ...cfg, enabled: e.target.checked }
+                                        });
+                                    }}
+                                    className="w-5 h-5 rounded border-slate-700 bg-slate-950"
+                                />
+                                <span className="text-white">Ativar Chatbot</span>
+                            </div>
+                            <div>
+                                <label className="text-sm text-slate-400">Mensagem de Boas-vindas</label>
+                                <input 
+                                    type="text" 
+                                    value={landingContent.chatbotConfig?.welcomeMessage || ''} 
+                                    onChange={(e) => {
+                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
+                                        setLandingContent({ 
+                                            ...landingContent, 
+                                            chatbotConfig: { ...cfg, welcomeMessage: e.target.value }
+                                        });
+                                    }} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" 
+                                />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Base de Conhecimento (Contexto para IA)</label>
+                                <textarea 
+                                    value={landingContent.chatbotConfig?.knowledgeBase || ''} 
+                                    onChange={(e) => {
+                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
+                                        setLandingContent({ 
+                                            ...landingContent, 
+                                            chatbotConfig: { ...cfg, knowledgeBase: e.target.value }
+                                        });
+                                    }} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-32" 
+                                    placeholder="Cole aqui informações sobre seu canal, links importantes, biografia, etc."
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-      {/* Add Post Modal (Manual Override) */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 w-full max-w-md rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-800 flex justify-between items-center">
-              <h3 className="font-bold text-lg">Adicionar Novo Post (Manual)</h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
-            </div>
-            <form onSubmit={handleAddPost} className="p-6 space-y-4">
-               {/* Simplified manual form for brevity */}
-               <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg">Salvar Manualmente</button>
-            </form>
-          </div>
-        </div>
-      )}
+            {activeTab === 'posts' && (
+                <div className="space-y-6">
+                     <div className="flex justify-between items-center">
+                        <h1 className="text-3xl font-bold">Gerenciar Posts</h1>
+                        <button 
+                            onClick={() => dbActions.clearPosts()}
+                            className="text-red-400 hover:text-red-300 text-sm flex items-center gap-2"
+                        >
+                            <Trash2 size={16} /> Limpar Tudo
+                        </button>
+                     </div>
 
+                     <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-slate-950 text-slate-400 text-sm border-b border-slate-800">
+                                    <th className="p-4">Plataforma</th>
+                                    <th className="p-4">Conteúdo</th>
+                                    <th className="p-4">Stats</th>
+                                    <th className="p-4 text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {posts.map(post => (
+                                    <tr key={post.id} className="border-b border-slate-800 hover:bg-slate-800/50">
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                                post.platform === Platform.YOUTUBE ? 'bg-red-500/20 text-red-400' :
+                                                post.platform === Platform.TIKTOK ? 'bg-teal-500/20 text-teal-400' :
+                                                post.platform === Platform.INSTAGRAM ? 'bg-fuchsia-500/20 text-fuchsia-400' :
+                                                'bg-blue-500/20 text-blue-400'
+                                            }`}>
+                                                {post.platform}
+                                            </span>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-3">
+                                                <img src={post.thumbnailUrl} className="w-10 h-10 rounded object-cover" alt="" />
+                                                <div className="max-w-md truncate text-sm">
+                                                    <div className="font-medium text-white truncate">{post.title || 'Sem título'}</div>
+                                                    <div className="text-slate-500 truncate">{post.caption}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-sm text-slate-400">
+                                            <div>Likes: {post.likes}</div>
+                                            <div>Views: {post.views}</div>
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            <button 
+                                                onClick={() => dbActions.deletePost(post.id)}
+                                                className="p-2 text-slate-500 hover:text-red-400 transition-colors"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {posts.length === 0 && (
+                                    <tr>
+                                        <td colSpan={4} className="p-8 text-center text-slate-500">
+                                            Nenhum post encontrado. Sincronize suas redes.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                     </div>
+                </div>
+            )}
+        </main>
     </div>
   );
 };

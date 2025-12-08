@@ -2,8 +2,6 @@
 import { SocialPost, Platform } from '../types';
 
 // Default Credentials (from user input)
-// WARNING: In production, Client Secret should NEVER be in frontend code.
-// This is for local demonstration purposes only.
 export const DEFAULT_CLIENT_KEY = 'aw4f52prfxu4yqzx';
 export const DEFAULT_CLIENT_SECRET = 'ZoNVIyX4xracwFi08hwIwhMuFA3mwtPw';
 
@@ -14,12 +12,7 @@ export const getRedirectUri = () => {
     : `${window.location.origin}/`;
 };
 
-// TikTok is very strict about the Redirect URI.
-// It must match EXACTLY what is in the Developer Portal, including the trailing slash.
 const REDIRECT_URI = getRedirectUri();
-
-// Proxy to bypass CORS on localhost
-// Use corsproxy.io to route requests (Proxy -> TikTok -> Client)
 const CORS_PROXY = 'https://corsproxy.io/?';
 
 /**
@@ -27,10 +20,7 @@ const CORS_PROXY = 'https://corsproxy.io/?';
  */
 export const getTikTokAuthUrl = (clientKey: string) => {
   const csrfState = Math.random().toString(36).substring(7);
-  
-  // Scopes: 
-  // user.info.basic: To get the Avatar and Display Name
-  // video.list: To get the videos
+  // Scopes: user.info.basic (Avatar/Followers), video.list (Videos)
   const scope = 'user.info.basic,video.list';
   
   const url = new URL('https://www.tiktok.com/v2/auth/authorize/');
@@ -45,7 +35,6 @@ export const getTikTokAuthUrl = (clientKey: string) => {
 
 /**
  * 2. Exchange Authorization Code for Access Token
- * Uses CORS Proxy to avoid browser blocking
  */
 export const exchangeTikTokCode = async (code: string, clientKey: string, clientSecret: string) => {
   const params = new URLSearchParams();
@@ -58,7 +47,6 @@ export const exchangeTikTokCode = async (code: string, clientKey: string, client
   try {
     const targetUrl = 'https://open.tiktokapis.com/v2/oauth/token/';
     
-    // Using CORS proxy and encoding the target URL
     const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
       method: 'POST',
       headers: {
@@ -74,11 +62,10 @@ export const exchangeTikTokCode = async (code: string, clientKey: string, client
       throw new Error(`TikTok Auth Error: ${data.error_description || data.error}`);
     }
 
-    // Return structured data to save
     return {
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
-      expiresIn: data.expires_in, // usually 86400 (24h)
+      expiresIn: data.expires_in, 
       refreshExpiresIn: data.refresh_expires_in
     };
 
@@ -89,8 +76,7 @@ export const exchangeTikTokCode = async (code: string, clientKey: string, client
 };
 
 /**
- * 3. Refresh Access Token (Auto-Renew logic)
- * Uses CORS Proxy to avoid browser blocking
+ * 3. Refresh Access Token
  */
 export const refreshTikTokToken = async (refreshToken: string, clientKey: string, clientSecret: string) => {
   const params = new URLSearchParams();
@@ -118,7 +104,7 @@ export const refreshTikTokToken = async (refreshToken: string, clientKey: string
 
     return {
       accessToken: data.access_token,
-      refreshToken: data.refresh_token, // Sometimes it rotates
+      refreshToken: data.refresh_token, 
       expiresIn: data.expires_in
     };
   } catch (error) {
@@ -128,8 +114,37 @@ export const refreshTikTokToken = async (refreshToken: string, clientKey: string
 };
 
 /**
- * 4. Fetch Posts (Main Logic)
- * Uses CORS Proxy to avoid browser blocking
+ * Helper: Get User Info (Follower Count)
+ */
+export const getTikTokUserStats = async (accessToken: string) => {
+  if (!accessToken) return { followers: 0 };
+
+  try {
+    const fields = "follower_count,display_name,avatar_url";
+    const targetUrl = `https://open.tiktokapis.com/v2/user/info/?fields=${fields}`;
+
+    const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+
+    const data = await response.json();
+    if (data.data && data.data.user) {
+        return { 
+            followers: data.data.user.follower_count || 0 
+        };
+    }
+    return { followers: 0 };
+  } catch (e) {
+    console.error("TikTok User Info Error:", e);
+    return { followers: 0 };
+  }
+};
+
+/**
+ * 4. Fetch Posts
  */
 export const getTikTokPosts = async (
   username: string = 'mundo.dos.dados5', 
@@ -146,7 +161,6 @@ export const getTikTokPosts = async (
   // AUTO-RENEWAL CHECK
   if (accessToken && refreshToken && clientKey && clientSecret && tokenExpiresAt) {
     const now = Date.now();
-    // Refresh if expired or expiring in less than 5 minutes
     if (now >= (tokenExpiresAt - 5 * 60 * 1000)) {
        console.log("TikTok Token expired or expiring soon. Refreshing...");
        try {
@@ -154,25 +168,18 @@ export const getTikTokPosts = async (
          validAccessToken = refreshed.accessToken;
          const newExpiry = Date.now() + (refreshed.expiresIn * 1000);
          
-         // Execute callback to save new keys to storage
          if (onTokenRefresh) {
            onTokenRefresh(refreshed.accessToken, refreshed.refreshToken, newExpiry);
          }
-         console.log("TikTok Token Refreshed Successfully!");
        } catch (err) {
          console.error("Failed to auto-renew TikTok token:", err);
-         // Fallback to try using old token or mock
        }
     }
   }
 
-  // ATTEMPT REAL API CALL
   if (validAccessToken) {
     try {
-      // API call to get video list
-      // Note: view_count might need specific permissions or different endpoints depending on API version
       const fields = "id,title,cover_image_url,like_count,comment_count,view_count,create_time,share_url";
-      
       const targetUrl = `https://open.tiktokapis.com/v2/video/list/?fields=${fields}`;
 
       const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
@@ -186,9 +193,7 @@ export const getTikTokPosts = async (
         })
       });
 
-      if (!response.ok) {
-        throw new Error(`TikTok API status: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`TikTok API status: ${response.status}`);
 
       const data = await response.json();
       
@@ -211,6 +216,5 @@ export const getTikTokPosts = async (
     }
   }
 
-  // No mock fallback anymore
   return [];
 };

@@ -1,4 +1,5 @@
 
+
 export enum Platform {
   YOUTUBE = 'YouTube',
   INSTAGRAM = 'Instagram',
@@ -24,8 +25,15 @@ export interface CreatorProfile {
   handle: string;
   avatarUrl: string;
   faviconUrl?: string;
-  subscribers: string;
+  subscribers: string; // Display string (Total)
   bio: string;
+  // New field for detailed stats
+  platformStats?: {
+    youtubeFollowers?: number;
+    instagramFollowers?: number;
+    tiktokFollowers?: number;
+    facebookFollowers?: number;
+  };
 }
 
 export interface AiSuggestion {
@@ -53,4 +61,18 @@ export interface LandingPageContent {
   logoUrl?: string;
   features: FeatureItem[];
   chatbotConfig?: ChatbotConfig;
+}
+
+export interface TikTokAuthData {
+  clientKey: string;
+  clientSecret: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+export interface MetaAuthData {
+  appId: string;
+  accessToken: string;
+  expiresAt: number;
 }

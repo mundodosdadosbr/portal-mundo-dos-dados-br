@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect } from 'react';
-import { SocialPost, Platform, CreatorProfile, LandingPageContent, ChatbotConfig } from './types';
+import { SocialPost, Platform, CreatorProfile, LandingPageContent, ChatbotConfig, TikTokAuthData, MetaAuthData } from './types';
 import { LandingPage } from './components/LandingPage';
 import { PortalDashboard } from './components/PortalDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -18,8 +19,6 @@ import {
   bulkSavePosts, 
   clearAllPosts, 
   isAuthenticated, 
-  TikTokAuthData,
-  MetaAuthData, 
   checkVirtualFileContent,
   checkMfaStatus,
   initiateMfaSetup,
