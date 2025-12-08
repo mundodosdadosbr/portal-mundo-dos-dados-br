@@ -27,7 +27,6 @@ import {
   saveMfaSecret,
   setUiSession
 } from './services/firebase';
-import { exchangeTikTokCode } from './services/tiktokService';
 
 // --- DADOS PADRÃO (FALLBACK VISUAL APENAS) ---
 const INITIAL_PROFILE: CreatorProfile = {
@@ -139,6 +138,26 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkPath = async () => {
+      // OAUTH POPUP RELAY CHECK
+      // If we are inside a popup and have a parent opener
+      if (window.opener && window.opener !== window) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const hash = window.location.hash;
+        
+        if (code) {
+           window.opener.postMessage({ type: 'TIKTOK_CODE', code }, window.location.origin);
+           window.close();
+           return; 
+        }
+        
+        if (hash && hash.includes('access_token')) {
+           window.opener.postMessage({ type: 'META_TOKEN', hash }, window.location.origin);
+           window.close();
+           return;
+        }
+      }
+
       const path = window.location.pathname.substring(1);
       if (path && path !== '') {
         const content = await checkVirtualFileContent(path);
@@ -193,79 +212,6 @@ const App: React.FC = () => {
 
   // Auth State
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-  // --- OAUTH CALLBACK HANDLER (TIKTOK & META) ---
-  useEffect(() => {
-    const handleAuthCallback = async () => {
-      // 1. Check for TikTok (Query Params: ?code=...)
-      const urlParams = new URLSearchParams(window.location.search);
-      const code = urlParams.get('code');
-      
-      // 2. Check for Meta (Hash Params: #access_token=...)
-      const hash = window.location.hash;
-      
-      if (code) {
-        // TIKTOK FLOW
-        setIsLoadingData(true);
-        try {
-          const storedKey = tiktokAuth.clientKey || 'aw4f52prfxu4yqzx'; 
-          const storedSecret = tiktokAuth.clientSecret || 'ZoNVIyX4xracwFi08hwIwhMuFA3mwtPw';
-
-          const tokens = await exchangeTikTokCode(code, storedKey, storedSecret);
-          
-          const newAuthData: Partial<TikTokAuthData> = {
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
-            expiresAt: Date.now() + (tokens.expiresIn * 1000)
-          };
-
-          saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth: { ...tiktokAuth, ...newAuthData }, metaAuth });
-          
-          window.history.replaceState({}, document.title, window.location.pathname);
-          alert("TikTok conectado com sucesso!");
-          setCurrentView('admin'); 
-          setIsLoggedIn(true); 
-          
-        } catch (error) {
-          console.error("Failed to exchange TikTok code:", error);
-          alert("Falha na conexão com TikTok.");
-        } finally {
-          setIsLoadingData(false);
-        }
-      } 
-      else if (hash && hash.includes('access_token')) {
-        // META FLOW
-        try {
-          const hashParams = new URLSearchParams(hash.substring(1)); // Remove #
-          const accessToken = hashParams.get('access_token');
-          const expiresIn = hashParams.get('expires_in'); // Seconds
-          
-          if (accessToken) {
-             const expiry = expiresIn ? Date.now() + (parseInt(expiresIn) * 1000) : Date.now() + (3600 * 1000); // Default 1h
-             
-             const newMetaAuth = {
-               ...metaAuth,
-               accessToken,
-               expiresAt: expiry
-             };
-
-             setMetaAuth(newMetaAuth);
-             saveSettings(profile, landingContent, { youtube: youtubeApiKey, tiktokAuth, metaAuth: newMetaAuth });
-
-             window.history.replaceState({}, document.title, window.location.pathname);
-             alert("Facebook/Instagram conectado com sucesso!");
-             setCurrentView('admin');
-             setIsLoggedIn(true);
-          }
-        } catch (error) {
-           console.error("Meta Auth Error:", error);
-        }
-      }
-    };
-    
-    // Only run if not blocking for virtual file
-    if (!isCheckingFile) handleAuthCallback();
-  }, [isCheckingFile, tiktokAuth, metaAuth, profile, landingContent, youtubeApiKey]); 
 
   // --- INICIALIZAÇÃO ---
   useEffect(() => {

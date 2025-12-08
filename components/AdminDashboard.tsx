@@ -8,7 +8,14 @@ import {
   FeatureItem
 } from '../types';
 import { getYouTubePosts, getYouTubeChannelStatistics } from '../services/youtubeService';
-import { getTikTokPosts, getTikTokAuthUrl, DEFAULT_CLIENT_KEY, DEFAULT_CLIENT_SECRET, getRedirectUri } from '../services/tiktokService';
+import { 
+  getTikTokPosts, 
+  getTikTokAuthUrl, 
+  exchangeTikTokCode, // Added import
+  DEFAULT_CLIENT_KEY, 
+  DEFAULT_CLIENT_SECRET, 
+  getRedirectUri 
+} from '../services/tiktokService';
 import { getMetaAuthUrl, getInstagramPosts, getFacebookPosts, getMetaRedirectUri } from '../services/metaService';
 import { TikTokAuthData, MetaAuthData, getVirtualFilesCloud, saveVirtualFile, deleteVirtualFile, VirtualFile } from '../services/firebase';
 import { 
@@ -84,6 +91,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeView, setActiveView] = useState<AdminView>('content');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   
   // Local State for Forms (Drafts)
   const [localProfile, setLocalProfile] = useState<CreatorProfile>(profile);
@@ -98,17 +106,60 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [virtualFiles, setVirtualFiles] = useState<VirtualFile[]>([]);
   const [newFile, setNewFile] = useState({ path: '', content: '' });
   
-  // OAuth Simulation State
-  const [oauthModalOpen, setOauthModalOpen] = useState(false);
-  const [oauthPlatform, setOauthPlatform] = useState<Platform | null>(null);
-  const [oauthLoading, setOauthLoading] = useState(false);
+  // POPUP LISTENER
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      // Security check: ensure message comes from same origin
+      if (event.origin !== window.location.origin) return;
 
-  const [connectedPlatforms, setConnectedPlatforms] = useState<Record<string, boolean>>({
-    [Platform.YOUTUBE]: true,
-    [Platform.INSTAGRAM]: false,
-    [Platform.TIKTOK]: false, 
-    [Platform.FACEBOOK]: false,
-  });
+      if (event.data.type === 'TIKTOK_CODE') {
+         setIsConnecting(true);
+         const code = event.data.code;
+         const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
+         const secret = tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET;
+         
+         try {
+            const tokens = await exchangeTikTokCode(code, key, secret);
+            setTiktokAuth({
+              accessToken: tokens.accessToken,
+              refreshToken: tokens.refreshToken,
+              expiresAt: Date.now() + (tokens.expiresIn * 1000)
+            });
+            alert("TikTok conectado com sucesso via Pop-up!");
+         } catch (e: any) {
+            console.error(e);
+            alert(`Erro ao conectar TikTok: ${e.message}`);
+         } finally {
+            setIsConnecting(false);
+         }
+      }
+
+      if (event.data.type === 'META_TOKEN') {
+         // Parse the hash sent from popup
+         // format: #access_token=...&expires_in=...
+         try {
+            const hash = event.data.hash.substring(1); // remove #
+            const params = new URLSearchParams(hash);
+            const accessToken = params.get('access_token');
+            const expiresIn = params.get('expires_in');
+            
+            if (accessToken) {
+               const expiry = expiresIn ? Date.now() + (parseInt(expiresIn) * 1000) : Date.now() + (3600 * 1000);
+               setMetaAuth({
+                 accessToken,
+                 expiresAt: expiry
+               });
+               alert("Meta (Facebook/Instagram) conectado com sucesso via Pop-up!");
+            }
+         } catch (e) {
+            console.error(e);
+         }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [tiktokAuth, setTiktokAuth, setMetaAuth]);
 
   const [newPost, setNewPost] = useState<Partial<SocialPost>>({
     platform: Platform.YOUTUBE,
@@ -237,7 +288,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  // --- CONNECT HANDLERS ---
+  // --- CONNECT HANDLERS (POP-UP) ---
   const handleConnectTikTok = () => {
      const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
      if (!key) {
@@ -250,7 +301,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
        clientSecret: tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET 
      });
 
-     window.location.href = getTikTokAuthUrl(key);
+     const url = getTikTokAuthUrl(key);
+     window.open(url, 'TikTok Auth', 'width=600,height=700,status=yes,scrollbars=yes');
   };
 
   const handleConnectMeta = () => {
@@ -258,7 +310,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       alert("Por favor, insira o App ID do Facebook.");
       return;
     }
-    window.location.href = getMetaAuthUrl(metaAuth.appId);
+    const url = getMetaAuthUrl(metaAuth.appId);
+    window.open(url, 'Meta Auth', 'width=600,height=700,status=yes,scrollbars=yes');
   };
 
   const handleDisconnect = (platform: Platform) => {
@@ -499,6 +552,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
+                {isConnecting && (
+                  <div className="bg-teal-500/10 border border-teal-500/30 text-teal-300 p-4 rounded-xl mb-6 flex items-center justify-center gap-2 animate-pulse">
+                     <RefreshCw className="animate-spin" />
+                     <span>Aguardando autenticação na janela Pop-up...</span>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* YouTube */}
                   <div className={`p-6 rounded-xl border transition-all bg-slate-900 border-emerald-500/30`}>
@@ -589,7 +649,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         onClick={() => isTikTokConnected ? handleDisconnect(Platform.TIKTOK) : handleConnectTikTok()}
                         className={`w-full py-2 rounded-lg text-sm font-medium transition-colors border mt-2 ${isTikTokConnected ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-teal-500 hover:bg-teal-400 text-slate-900 border-teal-500'}`}
                       >
-                        {isTikTokConnected ? 'Desconectar TikTok' : 'Autorizar e Conectar'}
+                        {isTikTokConnected ? 'Desconectar TikTok' : 'Autorizar e Conectar (Pop-up)'}
                       </button>
                     </div>
                   </div>
@@ -648,7 +708,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             onClick={() => isMetaConnected ? handleDisconnect(Platform.FACEBOOK) : handleConnectMeta()}
                             className={`w-full py-2 rounded-lg text-sm font-medium transition-colors border ${isMetaConnected ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-blue-600 hover:bg-blue-500 text-white border-blue-600'}`}
                           >
-                            {isMetaConnected ? 'Desconectar Meta' : 'Conectar com Facebook'}
+                            {isMetaConnected ? 'Desconectar Meta' : 'Conectar com Facebook (Pop-up)'}
                           </button>
                        </div>
                     </div>
@@ -660,10 +720,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </>
         )}
         
-        {/* ... (Other views like Pages, Profile, Files, Chatbot remain the same but hidden for brevity in this block if not changed logic-wise, but we must return full component for changes) */}
-        {/* Since I cannot put partial code in XML for replacement of the whole component easily without context, I assume the rest of the views (pages, profile, etc.) are standard from previous steps. 
-            I will include the rest of the switch cases below for completeness to ensure valid XML replacement. */}
-
         {/* CHATBOT VIEW */}
         {activeView === 'chatbot' && (
            <>
