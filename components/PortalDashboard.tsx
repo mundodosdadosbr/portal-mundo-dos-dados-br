@@ -224,16 +224,28 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
           <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
             {activeTab === 'All' ? 'Últimas Atualizações' : `Feed do ${activeTab}`}
           </h2>
-          {activeTab === Platform.YOUTUBE && (
-             <a 
-               href="https://www.youtube.com/channel/UClkSY_UxzYYIwKH2rpTHcDw" 
-               target="_blank" 
-               rel="noreferrer"
-               className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1"
-             >
-               Visitar Canal <Youtube size={14} />
-             </a>
-          )}
+          <div className="flex gap-4">
+            {activeTab === Platform.YOUTUBE && (
+              <a 
+                href="https://www.youtube.com/channel/UClkSY_UxzYYIwKH2rpTHcDw" 
+                target="_blank" 
+                rel="noreferrer"
+                className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1"
+              >
+                Visitar Canal <Youtube size={14} />
+              </a>
+            )}
+            {activeTab === Platform.INSTAGRAM && (
+              <a 
+                href="https://instagram.com/mundodosdadosbrasil" 
+                target="_blank" 
+                rel="noreferrer"
+                className="text-sm text-fuchsia-400 hover:text-fuchsia-300 flex items-center gap-1"
+              >
+                Visitar Perfil <Instagram size={14} />
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Masonry Grid */}

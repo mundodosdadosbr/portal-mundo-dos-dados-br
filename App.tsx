@@ -27,11 +27,12 @@ import {
   saveMfaSecret,
   setUiSession
 } from './services/firebase';
+import { exchangeTikTokCode } from './services/tiktokService';
 
 // --- DADOS PADRÃO (FALLBACK VISUAL APENAS) ---
 const INITIAL_PROFILE: CreatorProfile = {
   name: "Mundo dos Dados BR",
-  handle: "@mundodosdadosbr",
+  handle: "@mundodosdadosbrasil",
   avatarUrl: "images/logo.png",
   faviconUrl: "images/logo.png", 
   subscribers: "-",
