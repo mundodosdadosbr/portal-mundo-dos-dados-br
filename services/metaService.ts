@@ -32,6 +32,8 @@ export const getMetaAuthUrl = (appId: string) => {
   url.searchParams.set('response_type', 'token'); // Returns access_token in URL hash
   url.searchParams.set('scope', scope);
   url.searchParams.set('state', state);
+  // FORCE RE-REQUEST: Ensures the user sees the page selection screen again if they missed it before
+  url.searchParams.set('auth_type', 'rerequest'); 
 
   return url.toString();
 };
@@ -186,7 +188,10 @@ export const debugMetaConnection = async (accessToken: string) => {
 
     if (pages.length === 0) {
       logs.push("ALERTA CRÍTICO: Nenhuma página encontrada.");
-      logs.push("DICA: Quando o popup do Facebook abrir, certifique-se de selecionar TODAS as páginas, ou pelo menos a página que tem o Instagram vinculado.");
+      logs.push("CAUSAS POSSÍVEIS:");
+      logs.push("1. No popup de login, você desmarcou a Página 'Mundo dos Dados'.");
+      logs.push("2. O App no Facebook Developers está em 'Modo Desenvolvimento' e você não é Admin/Tester dele.");
+      logs.push("SOLUÇÃO: Clique em 'Conectar' novamente (atualizamos para pedir permissão de novo) e certifique-se de marcar TODAS as páginas.");
       return logs;
     }
 
