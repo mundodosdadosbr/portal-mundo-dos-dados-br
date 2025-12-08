@@ -55,12 +55,19 @@ const getConnectedAccounts = async (accessToken: string) => {
     // Fallback: If list is empty, try to fetch specific page ID directly
     if ((!data.data || data.data.length === 0)) {
         console.warn("Listagem vazia. Tentando buscar página específica...");
-        const targetPageId = '61557248068717'; // Mundo dos Dados BR ID
+        // Updated ID based on user feedback
+        const targetPageId = '262931593566452'; // Mundo dos Dados BR (Confirmed ID)
+        
         const directResp = await fetch(`${GRAPH_API_URL}/${targetPageId}?fields=${fields}&access_token=${accessToken}`);
         const directData = await directResp.json();
         
         if (directData.error) {
             console.error("Erro no fallback direto:", directData.error);
+            // Try the other potential ID just in case
+            const altId = '61557248068717';
+            const altResp = await fetch(`${GRAPH_API_URL}/${altId}?fields=${fields}&access_token=${accessToken}`);
+            const altData = await altResp.json();
+            if (altData.id) return [altData];
         }
 
         if (directData.id) {
@@ -148,7 +155,7 @@ export const getFacebookPosts = async (accessToken: string): Promise<SocialPost[
   if (!accessToken) return [];
 
   const TARGET_PAGE_NAME = 'Mundo dos Dados BR';
-  const TARGET_PAGE_ID = '61557248068717';
+  const TARGET_PAGE_ID = '262931593566452'; // Confirmed ID
 
   try {
     const pages = await getConnectedAccounts(accessToken);
@@ -221,8 +228,7 @@ export const debugMetaConnection = async (accessToken: string) => {
           logs.push("--- ANÁLISE DE CAUSA RAIZ ---");
           logs.push("1. As permissões estão OK ('granted').");
           logs.push("2. Mas a API não retorna nenhuma página.");
-          logs.push("CONCLUSÃO: O usuário provavelmente não selecionou a página no popup de login.");
-          logs.push("SOLUÇÃO: Clique no botão 'Resetar Permissões (Facebook)' abaixo. Isso abrirá as configurações do Facebook. Remova o aplicativo 'Mundo dos Dados' da lista e tente conectar novamente do zero, garantindo marcar 'Todas as páginas'.");
+          logs.push("CONCLUSÃO: O Facebook pode estar bloqueando listagem vazia. Tentamos buscar diretamente o ID 262931593566452.");
       }
       
       return logs;
