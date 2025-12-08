@@ -24,8 +24,8 @@ import { exchangeTikTokCode } from './services/tiktokService';
 
 // --- DADOS PADRÃO (FALLBACK VISUAL APENAS) ---
 const INITIAL_PROFILE: CreatorProfile = {
-  name: "Carregando...",
-  handle: "@...",
+  name: "Mundo dos Dados BR",
+  handle: "@mundodosdadosbr",
   avatarUrl: "images/logo.png",
   faviconUrl: "images/logo.png", 
   subscribers: "-",
@@ -33,7 +33,7 @@ const INITIAL_PROFILE: CreatorProfile = {
 };
 
 const INITIAL_LANDING_CONTENT: LandingPageContent = {
-  headline: "CreatorNexus",
+  headline: "Mundo dos Dados BR",
   subheadline: "Carregando configurações...",
   ctaButtonText: "Aguarde",
   logoUrl: "images/logo.png",

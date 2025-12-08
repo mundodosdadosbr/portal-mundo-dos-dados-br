@@ -19,21 +19,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdmi
       content: (
         <div className="space-y-4 text-slate-300 text-sm leading-relaxed">
           <p>
-            O <strong>CreatorNexus</strong> valoriza a sua privacidade. Esta política descreve como coletamos, usamos e protegemos as suas informações ao utilizar nossa plataforma de agregação de conteúdo.
+            O <strong>Mundo dos Dados BR</strong> valoriza a sua privacidade. Esta política descreve como coletamos, usamos e protegemos as suas informações ao utilizar nossa plataforma de agregação de conteúdo.
           </p>
           
           <h4 className="text-white font-bold mt-4">1. Coleta e Armazenamento de Dados</h4>
           <p>
-            O CreatorNexus opera primariamente como uma aplicação "Client-Side". Isso significa que:
+            O Mundo dos Dados BR opera primariamente como uma aplicação "Client-Side" conectada ao Firebase. Isso significa que:
           </p>
           <ul className="list-disc pl-5 space-y-1">
-            <li><strong>Credenciais (API Keys/Tokens):</strong> Suas chaves de API do YouTube e Tokens do TikTok são armazenados estritamente no <strong>Armazenamento Local (LocalStorage)</strong> do seu navegador. Nós não salvamos essas chaves em servidores externos.</li>
-            <li><strong>Dados de Perfil:</strong> Informações como biografia, links e preferências visuais são salvas localmente no seu dispositivo.</li>
+            <li><strong>Credenciais (API Keys/Tokens):</strong> Suas chaves de API do YouTube e Tokens do TikTok são armazenados de forma segura no banco de dados da sua própria instância ou localmente no navegador, dependendo da configuração.</li>
+            <li><strong>Dados de Perfil:</strong> Informações como biografia, links e preferências visuais são salvas para personalizar sua experiência.</li>
           </ul>
 
           <h4 className="text-white font-bold mt-4">2. Uso de APIs de Terceiros</h4>
           <p>
-            Para fornecer o painel unificado, utilizamos serviços oficiais de terceiros. Ao utilizar o CreatorNexus, você reconhece e concorda com as práticas de privacidade destes serviços:
+            Para fornecer o painel unificado, utilizamos serviços oficiais de terceiros. Ao utilizar o Mundo dos Dados BR, você reconhece e concorda com as práticas de privacidade destes serviços:
           </p>
           <ul className="list-disc pl-5 space-y-1">
             <li><strong>YouTube API Services:</strong> Utilizamos a API do YouTube para exibir vídeos e estatísticas. Dados acessados via API do YouTube são processados de acordo com a <a href="https://policies.google.com/privacy" target="_blank" className="text-indigo-400 underline">Política de Privacidade do Google</a>.</li>
@@ -43,12 +43,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdmi
 
           <h4 className="text-white font-bold mt-4">3. Compartilhamento de Dados</h4>
           <p>
-            Nós <strong>não vendemos, alugamos ou compartilhamos</strong> seus dados pessoais com terceiros. Como as chaves de acesso ficam no seu dispositivo, você tem controle total sobre o acesso à sua conta.
+            Nós <strong>não vendemos, alugamos ou compartilhamos</strong> seus dados pessoais com terceiros. Você tem controle total sobre o acesso à sua conta.
           </p>
 
           <h4 className="text-white font-bold mt-4">4. Seus Direitos</h4>
           <p>
-            Você pode revogar o acesso do CreatorNexus aos seus dados a qualquer momento:
+            Você pode revogar o acesso do Mundo dos Dados BR aos seus dados a qualquer momento:
           </p>
           <ul className="list-disc pl-5 space-y-1">
             <li>Limpando o cache/dados do seu navegador.</li>
@@ -63,12 +63,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdmi
       content: (
         <div className="space-y-4 text-slate-300 text-sm leading-relaxed">
           <p>
-            Ao acessar e usar o <strong>CreatorNexus</strong>, você concorda em cumprir estes Termos de Uso. Se você não concordar com algum destes termos, você está proibido de usar este site.
+            Ao acessar e usar o <strong>Mundo dos Dados BR</strong>, você concorda em cumprir estes Termos de Uso. Se você não concordar com algum destes termos, você está proibido de usar este site.
           </p>
 
           <h4 className="text-white font-bold mt-4">1. Licença de Uso</h4>
           <p>
-            O CreatorNexus concede a você uma licença limitada, não exclusiva e intransferível para usar a plataforma para fins pessoais ou comerciais de gerenciamento de conteúdo, sujeito a estes termos.
+            O Mundo dos Dados BR concede a você uma licença limitada, não exclusiva e intransferível para usar a plataforma para fins pessoais ou comerciais de gerenciamento de conteúdo, sujeito a estes termos.
           </p>
 
           <h4 className="text-white font-bold mt-4">2. Conformidade com Plataformas</h4>
@@ -86,7 +86,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdmi
 
           <h4 className="text-white font-bold mt-4">3. Propriedade Intelectual</h4>
           <p>
-            O código-fonte, design e funcionalidades do CreatorNexus são propriedade exclusiva dos desenvolvedores. O <strong>conteúdo</strong> (vídeos, textos, imagens) exibido no painel permanece sendo propriedade dos seus respectivos criadores.
+            O código-fonte, design e funcionalidades do Mundo dos Dados BR são propriedade exclusiva dos desenvolvedores. O <strong>conteúdo</strong> (vídeos, textos, imagens) exibido no painel permanece sendo propriedade dos seus respectivos criadores.
           </p>
 
           <h4 className="text-white font-bold mt-4">4. Isenção de Garantias</h4>
@@ -96,7 +96,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdmi
 
           <h4 className="text-white font-bold mt-4">5. Limitação de Responsabilidade</h4>
           <p>
-            Em nenhum caso o CreatorNexus ou seus fornecedores serão responsáveis por quaisquer danos (incluindo, sem limitação, danos por perda de dados ou lucro) decorrentes do uso ou da incapacidade de usar a plataforma.
+            Em nenhum caso o Mundo dos Dados BR ou seus fornecedores serão responsáveis por quaisquer danos (incluindo, sem limitação, danos por perda de dados ou lucro) decorrentes do uso ou da incapacidade de usar a plataforma.
           </p>
         </div>
       )

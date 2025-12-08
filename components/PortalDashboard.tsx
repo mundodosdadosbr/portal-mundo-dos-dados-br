@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Youtube, 
   Instagram, 
@@ -56,6 +56,66 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
       setIsGenerating(false);
     }
   };
+
+  // --- STATS CALCULATION ---
+  const stats = useMemo(() => {
+    // Helper format
+    const formatNumber = (num: number) => {
+      return new Intl.NumberFormat('pt-BR', { notation: "compact", maximumFractionDigits: 1 }).format(num);
+    };
+
+    // 1. Views (Last 30 Days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const monthlyViews = posts.reduce((acc, post) => {
+      const postDate = new Date(post.date);
+      // Validar data e somar views
+      if (!isNaN(postDate.getTime()) && postDate >= thirtyDaysAgo) {
+        return acc + (post.views || 0);
+      }
+      return acc;
+    }, 0);
+
+    // 2. Engagement Rate = (Likes + Comments) / Total Views * 100
+    const totalInteractions = posts.reduce((acc, post) => acc + (post.likes || 0) + (post.comments || 0), 0);
+    const totalViewsAllTime = posts.reduce((acc, post) => acc + (post.views || 0), 0);
+    
+    const engagementRate = totalViewsAllTime > 0 
+      ? ((totalInteractions / totalViewsAllTime) * 100).toFixed(2) 
+      : '0.0';
+
+    // 3. Total Posts
+    const totalPosts = posts.length;
+
+    return [
+      { 
+        label: 'Seguidores', 
+        value: profile.subscribers || '-', 
+        icon: Users, 
+        color: 'text-indigo-400' 
+      },
+      { 
+        label: 'Vis. Mensais', 
+        value: formatNumber(monthlyViews), 
+        icon: TrendingUp, 
+        color: 'text-emerald-400' 
+      },
+      { 
+        label: 'Engajamento', 
+        value: `${engagementRate}%`, 
+        icon: Heart, 
+        color: 'text-rose-400' 
+      },
+      { 
+        label: 'Publicações', 
+        value: totalPosts.toLocaleString('pt-BR'), 
+        icon: LayoutDashboard, 
+        color: 'text-amber-400' 
+      },
+    ];
+  }, [posts, profile.subscribers]);
+
 
   const NavButton = ({ label, icon: Icon, tab }: { label: string, icon: any, tab: Platform | 'All' }) => (
     <button
@@ -145,12 +205,7 @@ export const PortalDashboard: React.FC<PortalDashboardProps> = ({ posts, profile
         
         {/* Stats Overview */}
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {[
-            { label: 'Seguidores', value: '1.5M', icon: Users, color: 'text-indigo-400' },
-            { label: 'Vis. Mensais', value: '3.2M', icon: TrendingUp, color: 'text-emerald-400' },
-            { label: 'Engajamento', value: '8.4%', icon: Heart, color: 'text-rose-400' },
-            { label: 'Remixes IA', value: '124', icon: Sparkles, color: 'text-amber-400' },
-          ].map((stat, i) => (
+          {stats.map((stat, i) => (
             <div key={i} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
               <div className="flex justify-between items-start mb-2">
                 <span className="text-slate-500 text-xs uppercase font-semibold">{stat.label}</span>
