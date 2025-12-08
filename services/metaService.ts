@@ -165,3 +165,71 @@ export const getFacebookPosts = async (accessToken: string): Promise<SocialPost[
     return [];
   }
 };
+
+/**
+ * 5. Diagnostic Tool
+ */
+export const debugMetaConnection = async (accessToken: string) => {
+  const logs: string[] = [];
+  logs.push("--- INICIANDO DIAGNÓSTICO META ---");
+  
+  if (!accessToken) {
+    logs.push("ERRO: Nenhum Access Token encontrado. Conecte-se primeiro.");
+    return logs;
+  }
+
+  try {
+    // 1. Fetch Pages
+    logs.push("Buscando Páginas do Facebook vinculadas ao usuário...");
+    const pages = await getConnectedAccounts(accessToken);
+    logs.push(`Encontradas: ${pages.length} páginas.`);
+
+    if (pages.length === 0) {
+      logs.push("ALERTA CRÍTICO: Nenhuma página encontrada.");
+      logs.push("DICA: Quando o popup do Facebook abrir, certifique-se de selecionar TODAS as páginas, ou pelo menos a página que tem o Instagram vinculado.");
+      return logs;
+    }
+
+    // 2. Check each page for IG
+    let igFound = false;
+    for (const page of pages) {
+      logs.push(`Analizando Página: "${page.name}" (ID: ${page.id})`);
+      if (page.instagram_business_account) {
+        igFound = true;
+        logs.push(`✅ SUCESSO: Instagram Business vinculado! ID: ${page.instagram_business_account.id}`);
+        
+        // Try simple fetch
+        try {
+           logs.push("Tentando buscar 1 post de teste...");
+           const testUrl = `${GRAPH_API_URL}/${page.instagram_business_account.id}/media?limit=1&access_token=${accessToken}`;
+           const resp = await fetch(testUrl);
+           const json = await resp.json();
+           if (json.data) {
+             logs.push("✅ Teste de leitura OK. API retornou dados.");
+           } else if (json.error) {
+             logs.push(`❌ Erro na leitura: ${json.error.message}`);
+           }
+        } catch (e: any) {
+           logs.push(`❌ Falha na requisição de teste: ${e.message}`);
+        }
+
+      } else {
+        logs.push("⚠️ AVISO: Esta página NÃO tem conta do Instagram vinculada na API.");
+        logs.push("DICA: Vá no Meta Business Suite > Configurações > Contas do Instagram e vincule.");
+      }
+    }
+
+    if (!igFound) {
+      logs.push("--- RESULTADO FINAL: FALHA ---");
+      logs.push("Nenhuma das páginas que você autorizou tem um Instagram Business vinculado.");
+    } else {
+      logs.push("--- RESULTADO FINAL: OK ---");
+      logs.push("Parece tudo correto. Tente clicar em 'Sincronizar Tudo' novamente.");
+    }
+
+  } catch (error: any) {
+    logs.push(`ERRO GERAL: ${error.message}`);
+  }
+
+  return logs;
+};

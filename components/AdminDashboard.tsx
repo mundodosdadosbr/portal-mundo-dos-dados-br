@@ -16,7 +16,7 @@ import {
   DEFAULT_CLIENT_SECRET, 
   getRedirectUri 
 } from '../services/tiktokService';
-import { getMetaAuthUrl, getInstagramPosts, getFacebookPosts, getMetaRedirectUri } from '../services/metaService';
+import { getMetaAuthUrl, getInstagramPosts, getFacebookPosts, getMetaRedirectUri, debugMetaConnection } from '../services/metaService';
 import { TikTokAuthData, MetaAuthData, getVirtualFilesCloud, saveVirtualFile, deleteVirtualFile, VirtualFile } from '../services/firebase';
 import { 
   Trash2, 
@@ -43,7 +43,8 @@ import {
   Save,
   AvailableIcons,
   Bot,
-  MessageSquare
+  MessageSquare,
+  Zap
 } from './Icons';
 
 interface AdminDashboardProps {
@@ -92,6 +93,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  
+  // Debug State
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [isDebugLoading, setIsDebugLoading] = useState(false);
   
   // Local State for Forms (Drafts)
   const [localProfile, setLocalProfile] = useState<CreatorProfile>(profile);
@@ -271,7 +276,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         let msg = `Sincronização concluída!\n\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nInstagram: ${igPosts.length}\nFacebook: ${fbPosts.length}`;
         
         if (metaAuth.accessToken && igPosts.length === 0 && fbPosts.length > 0) {
-           msg += `\n\n⚠️ AVISO: Facebook conectado, mas nenhum post do Instagram encontrado. Verifique se sua conta do Instagram é "Business" e se está vinculada à Página do Facebook.`;
+           msg += `\n\n⚠️ AVISO: Facebook conectado, mas nenhum post do Instagram encontrado. Use o botão de diagnóstico na aba Integrações.`;
         }
 
         alert(msg);
@@ -323,8 +328,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         setTiktokAuth({ accessToken: '', refreshToken: '', expiresAt: 0 });
       } else if (platform === Platform.INSTAGRAM || platform === Platform.FACEBOOK) {
         setMetaAuth({ accessToken: '', expiresAt: 0 });
+        setDebugLogs([]); // clear logs
       }
     }
+  };
+  
+  const handleDebugMeta = async () => {
+    setIsDebugLoading(true);
+    setDebugLogs([]);
+    const logs = await debugMetaConnection(metaAuth.accessToken);
+    setDebugLogs(logs);
+    setIsDebugLoading(false);
   };
 
   const handleAddPost = (e: React.FormEvent) => {
@@ -715,14 +729,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                </div>
                              </div>
                           </div>
-                          <button 
-                            onClick={() => isMetaConnected ? handleDisconnect(Platform.FACEBOOK) : handleConnectMeta()}
-                            className={`w-full py-2 rounded-lg text-sm font-medium transition-colors border ${isMetaConnected ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-blue-600 hover:bg-blue-500 text-white border-blue-600'}`}
-                          >
-                            {isMetaConnected ? 'Desconectar Meta' : 'Conectar com Facebook (Pop-up)'}
-                          </button>
+                          
+                          <div className="flex gap-2">
+                             <button 
+                                onClick={handleDebugMeta}
+                                disabled={!isMetaConnected || isDebugLoading}
+                                className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-3 rounded-lg flex items-center justify-center transition-colors"
+                                title="Diagnosticar Conexão"
+                              >
+                                {isDebugLoading ? <RefreshCw className="animate-spin" size={16} /> : <Zap size={16} />}
+                             </button>
+                             <button 
+                                onClick={() => isMetaConnected ? handleDisconnect(Platform.FACEBOOK) : handleConnectMeta()}
+                                className={`flex-grow py-2 rounded-lg text-sm font-medium transition-colors border ${isMetaConnected ? 'border-red-900/50 text-red-400 hover:bg-red-950/30' : 'bg-blue-600 hover:bg-blue-500 text-white border-blue-600'}`}
+                              >
+                                {isMetaConnected ? 'Desconectar Meta' : 'Conectar (Pop-up)'}
+                              </button>
+                          </div>
                        </div>
                     </div>
+
+                    {/* DEBUG LOG VIEWER */}
+                    {debugLogs.length > 0 && (
+                      <div className="mt-4 bg-slate-950 p-4 rounded-lg border border-slate-800 animate-fade-in">
+                        <div className="flex justify-between items-center mb-2 border-b border-slate-800 pb-2">
+                          <h4 className="text-xs font-bold text-slate-400">Relatório de Diagnóstico</h4>
+                          <button onClick={() => setDebugLogs([])} className="text-slate-600 hover:text-white"><X size={14} /></button>
+                        </div>
+                        <pre className="text-[10px] font-mono text-slate-300 whitespace-pre-wrap h-32 overflow-y-auto">
+                          {debugLogs.map((log, i) => (
+                            <div key={i} className={log.includes('ERRO') || log.includes('FALHA') ? 'text-red-400' : log.includes('SUCESSO') ? 'text-emerald-400' : ''}>
+                              {log}
+                            </div>
+                          ))}
+                        </pre>
+                      </div>
+                    )}
                   </div>
 
                 </div>
