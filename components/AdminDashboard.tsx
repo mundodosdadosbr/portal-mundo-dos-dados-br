@@ -822,8 +822,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-6 h-fit">
                             <h3 className="font-bold text-white mb-4 flex items-center gap-2"><UploadCloud size={20} /> Adicionar Arquivo</h3>
                             <form onSubmit={handleSaveFile} className="space-y-4">
-                                <input type="text" value={newFile.path} onChange={(e) => setNewFile({...newFile, path: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" placeholder="ex: ads.txt" required />
-                                <textarea rows={8} value={newFile.content} onChange={(e) => setNewFile({...newFile, content: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white font-mono text-xs" required />
+                                <div>
+                                    <label className="text-xs text-slate-400">Path (Nome do arquivo)</label>
+                                    <input type="text" value={newFile.path} onChange={(e) => setNewFile({...newFile, path: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" placeholder="ex: tiktok_verify.txt" required />
+                                    <p className="text-[10px] text-slate-500 mt-1">Digite apenas o nome do arquivo, não a URL completa.</p>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-slate-400">Conteúdo</label>
+                                    <textarea rows={8} value={newFile.content} onChange={(e) => setNewFile({...newFile, content: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white font-mono text-xs" required />
+                                </div>
                                 <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg flex items-center justify-center space-x-2"><Plus size={18} /> <span>Salvar</span></button>
                             </form>
                         </div>
