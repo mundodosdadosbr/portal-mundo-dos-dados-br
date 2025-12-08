@@ -32,7 +32,7 @@ export const getMetaAuthUrl = (appId: string) => {
   url.searchParams.set('response_type', 'token'); // Returns access_token in URL hash
   url.searchParams.set('scope', scope);
   url.searchParams.set('state', state);
-  // FORCE RE-REQUEST: Ensures the user sees the page selection screen again if they missed it before
+  // FORCE RE-REQUEST: Ensures the user sees the page selection screen again
   url.searchParams.set('auth_type', 'rerequest'); 
 
   return url.toString();
@@ -40,7 +40,6 @@ export const getMetaAuthUrl = (appId: string) => {
 
 /**
  * 2. Fetch User's Pages and linked Instagram Accounts
- * Updated to fetch username to allow filtering
  */
 const getConnectedAccounts = async (accessToken: string) => {
   try {
@@ -50,6 +49,18 @@ const getConnectedAccounts = async (accessToken: string) => {
     const data = await response.json();
     
     if (data.error) throw new Error(data.error.message);
+    
+    // Fallback: If list is empty, try to fetch specific page ID directly to check if it's a permission list issue vs scope issue
+    if ((!data.data || data.data.length === 0)) {
+        console.warn("Listagem vazia. Tentando buscar página específica...");
+        const targetPageId = '61557248068717'; // Mundo dos Dados BR ID
+        const directResp = await fetch(`${GRAPH_API_URL}/${targetPageId}?fields=${fields}&access_token=${accessToken}`);
+        const directData = await directResp.json();
+        if (directData.id) {
+            console.log("Página encontrada via ID direto!");
+            return [directData];
+        }
+    }
     
     console.log("Facebook Pages Found:", data.data?.length || 0);
     return data.data || [];
@@ -77,9 +88,9 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
       p.instagram_business_account?.username?.toLowerCase() === TARGET_HANDLE
     );
     
-    // Fallback: If not found, take the first one available
+    // Fallback: If not found, take the first one available that has ANY instagram
     if (!igPage) {
-      console.warn(`Conta '${TARGET_HANDLE}' não encontrada. Tentando primeira conta disponível...`);
+      console.warn(`Conta '${TARGET_HANDLE}' não encontrada explicitamente. Buscando qualquer conta vinculada...`);
       igPage = pages.find((p: any) => p.instagram_business_account);
     }
     
@@ -140,16 +151,22 @@ export const getFacebookPosts = async (accessToken: string): Promise<SocialPost[
   if (!accessToken) return [];
 
   const TARGET_PAGE_NAME = 'Mundo dos Dados BR';
+  const TARGET_PAGE_ID = '61557248068717';
 
   try {
     // Step A: Get Pages
     const pages = await getConnectedAccounts(accessToken);
     
-    // Find specific page
-    let fbPage = pages.find((p: any) => p.name === TARGET_PAGE_NAME);
+    // Find specific page by ID first (more reliable), then Name
+    let fbPage = pages.find((p: any) => p.id === TARGET_PAGE_ID);
+
+    if (!fbPage) {
+        fbPage = pages.find((p: any) => p.name === TARGET_PAGE_NAME);
+    }
     
     if (!fbPage) {
-      console.warn(`Página '${TARGET_PAGE_NAME}' não encontrada. Usando a primeira disponível.`);
+      console.warn(`Página '${TARGET_PAGE_NAME}' (ID: ${TARGET_PAGE_ID}) não encontrada na lista de permissões.`);
+      // Last resort: use first available
       fbPage = pages[0];
     }
     
@@ -209,7 +226,11 @@ export const debugMetaConnection = async (accessToken: string) => {
 
     if (pages.length === 0) {
       logs.push("ALERTA CRÍTICO: Nenhuma página encontrada.");
-      logs.push("SOLUÇÃO: Clique em 'Conectar' e marque TODAS as páginas no popup do Facebook.");
+      logs.push("CAUSA PROVÁVEL: Permissão de acesso às páginas foi negada anteriormente ou o App está em modo DEV sem acesso.");
+      logs.push("SOLUÇÃO RECOMENDADA:");
+      logs.push("1. Acesse: https://www.facebook.com/settings?tab=business_tools");
+      logs.push("2. Encontre o App 'CreatorNexus' (ou o nome do seu App) e clique em REMOVER.");
+      logs.push("3. Volte aqui e clique em 'Conectar' novamente.");
       return logs;
     }
 
@@ -225,7 +246,7 @@ export const debugMetaConnection = async (accessToken: string) => {
         logs.push(`✅ VINCULADO: Instagram @${igUser} (ID: ${page.instagram_business_account.id})`);
         
         if (igUser.toLowerCase() === 'mundodosdadosbrasil') {
-             logs.push("🌟 ESTA É A CONTA ALVO CORRETA!");
+             logs.push("🌟 SUCESSO: CONTA ALVO ENCONTRADA!");
         }
 
       } else {
@@ -236,6 +257,7 @@ export const debugMetaConnection = async (accessToken: string) => {
     if (!igFound) {
        logs.push("---");
        logs.push("RESUMO: Nenhuma conta Instagram foi encontrada nas páginas listadas.");
+       logs.push("DICA: Verifique se sua conta Instagram é 'Business' e se está conectada à Página do Facebook nas 'Configurações da Página > Contas Vinculadas'.");
     }
 
   } catch (error: any) {
