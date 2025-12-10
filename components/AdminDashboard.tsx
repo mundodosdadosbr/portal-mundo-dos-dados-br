@@ -1,11 +1,15 @@
 
+
+
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, Settings, RefreshCw, LogOut, Save, Youtube, 
   Instagram, Facebook, Trash2, Plus, Eye, Link2, TikTokIcon,
   TrendingUp, CloudLightning, Users, Bot, FileText, UploadCloud,
   X, CheckCircle, Lock, Zap, MessageSquare, BookOpen, Video, Clock,
-  AvailableIcons
+  AvailableIcons, AlertTriangle, Globe, ExternalLink, Database
 } from './Icons';
 import { 
   SocialPost, CreatorProfile, LandingPageContent, Platform, 
@@ -18,7 +22,8 @@ import {
   getTikTokUserStats,
   exchangeTikTokCode,
   DEFAULT_CLIENT_KEY, 
-  DEFAULT_CLIENT_SECRET 
+  DEFAULT_CLIENT_SECRET,
+  getRedirectUri
 } from '../services/tiktokService';
 import { 
   getMetaAuthUrl, 
@@ -150,7 +155,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         id: Date.now().toString(), 
         title: 'Nova Seção', 
         description: 'Descrição do recurso...', 
-        icon: 'Star' 
+        icon: 'Star',
+        markdownContent: ''
     };
     const currentFeatures = landingContent.features || [];
     setLandingContent({ ...landingContent, features: [...currentFeatures, newFeature] });
@@ -203,11 +209,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       // 2. TikTok
       let tiktokPosts: SocialPost[] = [];
+      
+      // Tenta estatísticas separadamente para não bloquear posts
+      if (tiktokAuth.accessToken) {
+         try {
+             const ttStats = await getTikTokUserStats(tiktokAuth.accessToken);
+             if (ttStats.followers > 0) newStats.tiktokFollowers = ttStats.followers;
+         } catch (statsErr) {
+             console.error("TikTok Stats Error:", statsErr);
+             // Não lança erro, apenas segue
+         }
+      }
+
+      // Tenta posts
       if (tiktokAuth.accessToken) {
         try {
-            const ttStats = await getTikTokUserStats(tiktokAuth.accessToken);
-            if (ttStats.followers > 0) newStats.tiktokFollowers = ttStats.followers;
-
             tiktokPosts = await getTikTokPosts(
             '@mundo.dos.dados5', 
             tiktokAuth.accessToken,
@@ -309,7 +325,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // --- POPUP TRIGGERS ---
   const startTikTokAuth = () => {
-     const url = getTikTokAuthUrl(tiktokAuth.clientKey || DEFAULT_CLIENT_KEY);
+     const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
+     // Validate basic mistakes
+     if (!key.trim()) {
+       alert("O campo Client Key está vazio.");
+       return;
+     }
+     if (/^\d+$/.test(key.trim()) && key.trim().length > 10) {
+       alert("Erro: Você inseriu apenas números na Client Key.\n\nIsso parece ser o App ID. A Client Key é um código diferente (ex: aw3f...). Verifique no portal do TikTok.");
+       return;
+     }
+
+     const url = getTikTokAuthUrl(key.trim());
      window.open(url, 'TikTok Auth', 'width=600,height=700,status=yes,scrollbars=yes');
   };
 
@@ -445,6 +472,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
             )}
 
+            {/* Integrations Tab */}
             {activeTab === 'integrations' && (
                 <div className="max-w-4xl space-y-8">
                      <h1 className="text-3xl font-bold">Integrações</h1>
@@ -475,26 +503,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <TikTokIcon className="w-6 h-6" />
                             <h2 className="text-xl font-bold text-white">TikTok for Developers</h2>
                         </div>
+                        
+                        <div className="bg-slate-950 p-4 rounded-lg border border-slate-700 mb-6 text-sm text-slate-300 space-y-2">
+                           <div className="flex items-start gap-2">
+                              <AlertTriangle size={16} className="text-amber-400 mt-0.5 shrink-0" />
+                              <p><strong className="text-white">Importante:</strong> Você precisa da <strong>Client Key</strong> e <strong>Client Secret</strong>.</p>
+                           </div>
+                           <p className="pl-6 text-slate-400 text-xs">
+                              O número que aparece na lista de apps (ex: 7580...) é o <strong>App ID</strong>. Ele NÃO serve aqui.
+                              <br />
+                              Clique no nome do seu app (ex: <em>conn_mdados</em>) no portal para ver as chaves corretas (geralmente começam com letras, ex: <em>aw...</em>).
+                           </p>
+                           <a href="https://developers.tiktok.com/apps/" target="_blank" className="pl-6 text-teal-400 hover:underline flex items-center gap-1 text-xs">
+                              <ExternalLink size={12} /> Ir para TikTok Apps
+                           </a>
+                           {/* Hint for reconnect */}
+                           <div className="flex items-start gap-2 pt-2 border-t border-slate-800 mt-2">
+                              <TrendingUp size={16} className="text-teal-400 mt-0.5 shrink-0" />
+                              <p>Se os seguidores não aparecerem, clique em <strong>Reconectar</strong> para autorizar a leitura de estatísticas (Scope: user.info.stats).</p>
+                           </div>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-4 mb-4">
                              <div>
-                                <label className="block text-sm text-slate-400 mb-1">Client Key</label>
+                                <label className="block text-sm text-slate-400 mb-1">Client Key (Não use o App ID numérico)</label>
                                 <input 
                                     type="text" 
                                     value={tiktokAuth.clientKey || ''}
-                                    onChange={(e) => setTiktokAuth({ clientKey: e.target.value })}
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-teal-500 focus:outline-none"
+                                    onChange={(e) => setTiktokAuth({ clientKey: e.target.value.trim() })}
+                                    className={`w-full bg-slate-950 border rounded-lg p-3 text-white focus:outline-none ${/^\d+$/.test(tiktokAuth.clientKey || '') && (tiktokAuth.clientKey || '').length > 10 ? 'border-red-500 focus:border-red-500' : 'border-slate-700 focus:border-teal-500'}`}
+                                    placeholder="Ex: aw4f52..."
                                 />
+                                {/^\d+$/.test(tiktokAuth.clientKey || '') && (tiktokAuth.clientKey || '').length > 10 && (
+                                   <p className="text-red-400 text-[10px] mt-1">Isso parece um App ID. Use a Client Key.</p>
+                                )}
                             </div>
                              <div>
                                 <label className="block text-sm text-slate-400 mb-1">Client Secret</label>
                                 <input 
                                     type="password" 
                                     value={tiktokAuth.clientSecret || ''}
-                                    onChange={(e) => setTiktokAuth({ clientSecret: e.target.value })}
+                                    onChange={(e) => setTiktokAuth({ clientSecret: e.target.value.trim() })}
                                     className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-teal-500 focus:outline-none"
                                 />
                             </div>
                         </div>
+                        
+                        <div className="mb-4">
+                           <p className="text-xs text-slate-500 mb-1">Redirect URI (Configure no portal do TikTok):</p>
+                           <div className="bg-slate-950 border border-slate-800 rounded p-2 text-xs font-mono text-teal-400 break-all select-all">
+                              {getRedirectUri()}
+                           </div>
+                        </div>
+
                         <div className="flex items-center justify-between bg-slate-950 p-4 rounded-lg">
                              <div className="text-sm">
                                 <span className="text-slate-400">Status: </span>
@@ -633,9 +694,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <label className="text-sm text-slate-400">Texto do Botão CTA</label>
                                 <input type="text" value={landingContent.ctaButtonText} onChange={(e) => handleLandingChange('ctaButtonText', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
                             </div>
-                            <div>
-                                <label className="text-sm text-slate-400">Logo URL (Opcional)</label>
-                                <input type="text" value={landingContent.logoUrl || ''} onChange={(e) => handleLandingChange('logoUrl', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-sm text-slate-400">Logo Principal URL</label>
+                                    <input type="text" value={landingContent.logoUrl || ''} onChange={(e) => handleLandingChange('logoUrl', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                                </div>
+                                <div>
+                                    <label className="text-sm text-slate-400">URL do Bucket de Logos (Cloud Storage)</label>
+                                    <input type="text" value={landingContent.logoBucketUrl || ''} onChange={(e) => handleLandingChange('logoBucketUrl', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" placeholder="https://storage.googleapis.com/..." />
+                                </div>
+                            </div>
+                            
+                            {/* Bucket Help Text */}
+                            <div className="bg-slate-950 p-3 rounded border border-slate-800 text-xs text-slate-400">
+                                <p className="font-bold text-white mb-2">Arquivos Esperados no Bucket (PNG):</p>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 font-mono text-emerald-500">
+                                   <span>aws.png</span>
+                                   <span>azure.png</span>
+                                   <span>google-cloud.png</span>
+                                   <span>databricks.png</span>
+                                   <span>snowflake.png</span>
+                                   <span>bigquery.png</span>
+                                   <span>python.png</span>
+                                   <span>power-bi.png</span>
+                                   <span>sql-server.png</span>
+                                   <span>apache-spark.png</span>
+                                   <span>hadoop.png</span>
+                                   <span>excel.png</span>
+                                </div>
                             </div>
 
                             <div className="pt-6 border-t border-slate-800">
@@ -647,9 +733,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     {landingContent.features && landingContent.features.map((feature) => (
                                     <div key={feature.id} className="bg-slate-950 border border-slate-700 rounded-lg p-4 relative group">
                                         <div className="flex justify-between items-start mb-3">
-                                            <div className="flex-grow mr-4">
-                                                <input type="text" value={feature.title} onChange={(e) => handleUpdateFeature(feature.id, 'title', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white mb-2" placeholder="Título" />
-                                                <textarea value={feature.description} onChange={(e) => handleUpdateFeature(feature.id, 'description', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white h-20" placeholder="Descrição" />
+                                            <div className="flex-grow mr-4 space-y-2">
+                                                <input type="text" value={feature.title} onChange={(e) => handleUpdateFeature(feature.id, 'title', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" placeholder="Título" />
+                                                <textarea value={feature.description} onChange={(e) => handleUpdateFeature(feature.id, 'description', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white h-16" placeholder="Descrição curta" />
+                                                
+                                                {/* Markdown Content Editor */}
+                                                <div>
+                                                    <label className="text-xs text-slate-500 mb-1 block">Conteúdo Detalhado (Modal)</label>
+                                                    <textarea 
+                                                        value={feature.markdownContent || ''} 
+                                                        onChange={(e) => handleUpdateFeature(feature.id, 'markdownContent', e.target.value)} 
+                                                        className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-indigo-200 h-24 font-mono" 
+                                                        placeholder="Use Markdown aqui: # Título, **Negrito**, - Lista, [Link](url)" 
+                                                    />
+                                                </div>
                                             </div>
                                             <div className="flex flex-col items-center gap-2">
                                                  <label className="text-xs text-slate-500 mb-1">Ícone</label>
@@ -818,9 +915,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {activeTab === 'files' && (
                 <div className="space-y-6">
                     <h1 className="text-3xl font-bold">Arquivos & DNS</h1>
+                    
+                    {/* CRITICAL WARNING FOR SPA BOT ISSUES */}
+                    <div className="bg-amber-500/10 border border-amber-500/30 text-amber-200 p-4 rounded-xl flex items-start gap-3">
+                        <AlertTriangle size={24} className="text-amber-500 mt-1 flex-shrink-0" />
+                        <div>
+                            <h3 className="font-bold text-amber-400">Atenção: Verificação em Single Page Apps (SPA)</h3>
+                            <p className="text-sm mt-1 text-amber-200/80 leading-relaxed">
+                                Bots de verificação (como os do TikTok e Google) muitas vezes <strong>não executam JavaScript</strong>. 
+                                Como este portal é um SPA (React), eles podem ver apenas uma tela branca em vez do seu arquivo de texto.
+                            </p>
+                            <p className="text-sm mt-2 font-bold text-white">
+                                Se a verificação por arquivo falhar, use o método de <span className="text-emerald-400 underline decoration-emerald-500">Registro DNS TXT</span> no seu provedor de domínio. É garantido e funciona instantaneamente.
+                            </p>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-6 h-fit">
-                            <h3 className="font-bold text-white mb-4 flex items-center gap-2"><UploadCloud size={20} /> Adicionar Arquivo</h3>
+                            <h3 className="font-bold text-white mb-4 flex items-center gap-2"><UploadCloud size={20} /> Adicionar Arquivo Virtual</h3>
                             <form onSubmit={handleSaveFile} className="space-y-4">
                                 <div>
                                     <label className="text-xs text-slate-400">Path (Nome do arquivo)</label>
@@ -841,6 +954,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <div key={idx} className="p-4 flex items-start justify-between hover:bg-slate-800/30 transition-colors">
                                     <div className="overflow-hidden mr-4">
                                         <div className="flex items-center gap-2 mb-1"><FileText size={16} /><span className="font-mono font-bold text-white truncate">/{file.path}</span></div>
+                                        <a href={`/${file.path}`} target="_blank" className="text-xs text-indigo-400 hover:underline flex items-center gap-1"><Globe size={10} /> Testar Link</a>
                                     </div>
                                     <button onClick={() => handleDeleteFile(file.path)} className="text-slate-500 hover:text-red-400 p-2"><Trash2 size={18} /></button>
                                 </div>

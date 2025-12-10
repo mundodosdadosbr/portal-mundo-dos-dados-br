@@ -27,6 +27,26 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #64748b; 
       }
+
+      /* Animations for Logo Marquee */
+      @keyframes scroll-left {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
+      }
+      @keyframes scroll-right {
+        0% { transform: translateX(-50%); }
+        100% { transform: translateX(0); }
+      }
+      
+      .animate-scroll-left {
+        animation: scroll-left 40s linear infinite;
+      }
+      .animate-scroll-right {
+        animation: scroll-right 40s linear infinite;
+      }
+      
+      /* Pause animation on hover if desired, currently disabled to keep background moving */
+      /* .group:hover .animate-scroll-left { animation-play-state: paused; } */
     </style>
   <script type="importmap">
 {

@@ -43,7 +43,12 @@ import {
   Send,
   Bot,
   Settings,
-  Clock
+  Clock,
+  ExternalLink,
+  Database,
+  Code,
+  ArrowRight,
+  Linkedin
 } from 'lucide-react';
 
 export { 
@@ -89,7 +94,12 @@ export {
   Send,
   Bot,
   Settings,
-  Clock
+  Clock,
+  ExternalLink,
+  Database,
+  Code,
+  ArrowRight,
+  Linkedin
 };
 
 // Custom TikTok icon component
@@ -144,5 +154,7 @@ export const AvailableIcons: Record<string, React.ElementType> = {
   MessageSquare,
   Bot,
   Settings,
+  Database,
+  Code,
   Star: Sparkles // Alias
 };

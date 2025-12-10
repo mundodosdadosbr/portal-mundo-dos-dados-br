@@ -2,8 +2,8 @@
 import { SocialPost, Platform } from '../types';
 
 // Default Credentials (from user input)
-export const DEFAULT_CLIENT_KEY = 'aw4f52prfxu4yqzx';
-export const DEFAULT_CLIENT_SECRET = 'ZoNVIyX4xracwFi08hwIwhMuFA3mwtPw';
+export const DEFAULT_CLIENT_KEY = 'sbawz7vbk8wmhibbzd';
+export const DEFAULT_CLIENT_SECRET = '1ZokZGoajYeWb7T2uzUK7hFVGIqSY906';
 
 // Helper to get the consistent Redirect URI
 export const getRedirectUri = () => {
@@ -20,8 +20,11 @@ const CORS_PROXY = 'https://corsproxy.io/?';
  */
 export const getTikTokAuthUrl = (clientKey: string) => {
   const csrfState = Math.random().toString(36).substring(7);
-  // Scopes: user.info.basic (Avatar/Followers), video.list (Videos)
-  const scope = 'user.info.basic,video.list';
+  // Scopes: 
+  // - user.info.basic (Avatar/Name)
+  // - user.info.stats (Followers/Likes) - REQUIRED for follower count
+  // - video.list (Videos)
+  const scope = 'user.info.basic,user.info.stats,video.list';
   
   const url = new URL('https://www.tiktok.com/v2/auth/authorize/');
   url.searchParams.set('client_key', clientKey);
@@ -131,6 +134,15 @@ export const getTikTokUserStats = async (accessToken: string) => {
     });
 
     const data = await response.json();
+
+    if (data.error) {
+       console.error("TikTok Stats API Error:", data.error);
+       // Log detailed error for debugging permissions
+       if (data.error.code === 'access_denied' || data.error.code === 'scope_not_authorized') {
+           console.warn("Permissão negada. Verifique se o escopo 'user.info.stats' foi autorizado.");
+       }
+    }
+
     if (data.data && data.data.user) {
         return { 
             followers: data.data.user.follower_count || 0 

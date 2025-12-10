@@ -49,6 +49,7 @@ const INITIAL_LANDING_CONTENT: LandingPageContent = {
   subheadline: "Carregando configurações...",
   ctaButtonText: "Aguarde",
   logoUrl: "images/logo.png",
+  logoBucketUrl: "https://storage.googleapis.com/mdados-images-publics/images-portais-link/",
   features: [
     { id: '1', title: "...", description: "...", icon: "TrendingUp" },
     { id: '2', title: "...", description: "...", icon: "CloudLightning" },

@@ -46,6 +46,7 @@ export interface FeatureItem {
   title: string;
   description: string;
   icon: string;
+  markdownContent?: string; // Conteúdo detalhado em Markdown para o modal "Saiba Mais"
 }
 
 export interface ChatbotConfig {
@@ -59,6 +60,7 @@ export interface LandingPageContent {
   subheadline: string;
   ctaButtonText: string;
   logoUrl?: string;
+  logoBucketUrl?: string; // URL pública do bucket para imagens do carrossel
   features: FeatureItem[];
   chatbotConfig?: ChatbotConfig;
 }
