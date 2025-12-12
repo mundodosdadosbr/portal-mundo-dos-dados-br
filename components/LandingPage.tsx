@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Sparkles, TrendingUp, Users, LayoutDashboard, CloudLightning, X, ShieldCheck, Lock, Smartphone, Mail, Github, AvailableIcons, Youtube, Instagram, Facebook, TikTokIcon, Video, BarChart3, CloudLightning as CloudIcon, FileText, Database, Code, Globe, Zap, ArrowRight, BookOpen, Linkedin } from './Icons';
 import { LandingPageContent, FeatureItem } from '../types';
 
@@ -188,6 +189,57 @@ const SimpleMarkdownRenderer = ({ content }: { content: string }) => {
 export const LandingPage: React.FC<LandingPageProps> = ({ onPortalAccess, onAdminLogin, content }) => {
   const [activeLegalModal, setActiveLegalModal] = useState<'privacy' | 'terms' | null>(null);
   const [activeFeature, setActiveFeature] = useState<FeatureItem | null>(null);
+
+  // --- SEO INJECTION: FEATURES SCHEMA ---
+  // Injeta o conteúdo detalhado (Markdown) no JSON-LD para o Google ler, 
+  // mesmo que esteja "escondido" no modal.
+  useEffect(() => {
+    if (!content.features || content.features.length === 0) return;
+
+    // Helper to strip markdown for cleaner SEO text
+    const stripMarkdown = (text: string) => {
+      if (!text) return '';
+      return text
+        .replace(/[#*]/g, '') // remove simple markdown chars like # and *
+        .replace(/\[(.*?)\]\(.*?\)/g, '$1') // replace links [text](url) with just text
+        .replace(/\n/g, ' '); // linearize
+    };
+
+    const schemaData = {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      "name": "Recursos e Conteúdos do Mundo dos Dados BR",
+      "itemListElement": content.features.map((feature, index) => ({
+        "@type": "ListItem",
+        "position": index + 1,
+        "item": {
+          "@type": "Service",
+          "name": feature.title,
+          "description": feature.description,
+          // Propriedade customizada (disambiguatingDescription ou text) para o conteúdo longo
+          "disambiguatingDescription": stripMarkdown(feature.markdownContent || feature.description),
+          "image": `https://portal.mundodosdadosbr.com/images/${feature.icon}.png` // Simulated URL
+        }
+      }))
+    };
+
+    const script = document.createElement('script');
+    script.type = 'application/ld+json';
+    script.text = JSON.stringify(schemaData);
+    script.id = 'features-dynamic-schema';
+
+    // Cleanup old script if exists
+    const old = document.getElementById('features-dynamic-schema');
+    if (old) old.remove();
+
+    document.head.appendChild(script);
+
+    return () => {
+      if (document.head.contains(script)) {
+        document.head.removeChild(script);
+      }
+    };
+  }, [content.features]);
 
   const LEGAL_CONTENT = {
     privacy: {
