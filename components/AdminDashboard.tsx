@@ -70,7 +70,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<AdminView>('dashboard');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  
+  // Sync Status States
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [lastSyncType, setLastSyncType] = useState<'Manual' | 'Auto' | null>(null);
+  const [nextSyncTime, setNextSyncTime] = useState<Date | null>(null);
+
   const [visitStats, setVisitStats] = useState(0);
 
   // File System State
@@ -307,7 +312,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (dbActions) {
         dbActions.syncPosts(combinedPosts);
         
+        // --- ATUALIZA STATUS DA SINCRONIZAÇÃO ---
         setLastSyncTime(new Date());
+        setLastSyncType(isAuto ? 'Auto' : 'Manual');
 
         if (!isAuto) {
             let msg = `Sincronização concluída!\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nInstagram: ${igPosts.length}\nFacebook: ${fbPosts.length}`;
@@ -335,11 +342,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     const ONE_HOUR_MS = 60 * 60 * 1000;
     
+    // Set initial next sync time on mount
+    setNextSyncTime(new Date(Date.now() + ONE_HOUR_MS));
+
     const intervalId = setInterval(() => {
         console.log("⏰ Executing Auto-Sync...");
         if (handleSyncRef.current) {
             handleSyncRef.current(true); // Pass true for isAuto
         }
+        // Update next sync time after execution
+        setNextSyncTime(new Date(Date.now() + ONE_HOUR_MS));
     }, ONE_HOUR_MS);
 
     return () => clearInterval(intervalId);
@@ -455,10 +467,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="space-y-6">
                     <div className="flex justify-between items-center">
                         <h1 className="text-3xl font-bold">Visão Geral</h1>
-                        <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-900 px-3 py-1.5 rounded-full border border-slate-800">
-                            <Clock size={14} className="text-emerald-500 animate-pulse" />
-                            <span>Auto-Sync: Ativo (1h)</span>
-                            {lastSyncTime && <span className="text-slate-600 border-l border-slate-700 pl-2 ml-2">Última: {lastSyncTime.toLocaleTimeString()}</span>}
+                        
+                        {/* Status do Auto-Sync Melhorado */}
+                        <div className="flex flex-col md:flex-row items-end md:items-center gap-3">
+                             <div className="flex items-center gap-3 text-xs bg-slate-900 px-4 py-2 rounded-lg border border-slate-800 shadow-sm">
+                                <div className="flex items-center gap-2 text-emerald-400 font-bold border-r border-slate-700 pr-3">
+                                    <Clock size={14} className="animate-pulse" />
+                                    <span>Auto-Sync (1h)</span>
+                                </div>
+                                
+                                <div className="flex flex-col md:flex-row md:gap-4 text-slate-400">
+                                    {lastSyncTime ? (
+                                        <span title="Horário da última execução">
+                                            Última: <span className="text-white font-mono">{lastSyncTime.toLocaleTimeString()}</span> 
+                                            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded uppercase font-bold ${lastSyncType === 'Auto' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                                                {lastSyncType === 'Auto' ? 'Auto' : 'Manual'}
+                                            </span>
+                                        </span>
+                                    ) : (
+                                        <span>Aguardando execução...</span>
+                                    )}
+                                    
+                                    {nextSyncTime && (
+                                        <span className="md:border-l md:border-slate-700 md:pl-4" title="Próxima execução automática">
+                                            Próxima: <span className="text-white font-mono">{nextSyncTime.toLocaleTimeString()}</span>
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -501,7 +537,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                 </div>
             )}
-
+            
+            {/* Rest of the component (tabs for integrations, content, etc) remains unchanged in structure... */}
             {/* Integrations Tab */}
             {activeTab === 'integrations' && (
                 <div className="max-w-4xl space-y-8">
