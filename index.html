@@ -5,12 +5,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <!-- SEO Padrão (Fallback para bots sem JS) -->
+    <!-- SEO Padrão -->
     <title>Mundo dos Dados BR - Portal Oficial</title>
     <meta name="description" content="O portal definitivo para Data Science, Analytics e Tecnologia. Acompanhe os últimos vídeos, tutoriais e estatísticas do canal Mundo dos Dados BR em um único lugar.">
-    <meta name="keywords" content="Data Science, Python, Power BI, SQL, Tecnologia, Mundo dos Dados, Dados, Big Data, Analytics, Programação">
+    <meta name="keywords" content="Data Science, Python, Power BI, SQL, Tecnologia, Mundo dos Dados, Dados, Big Data, Analytics, Programação, Diego Morais">
     <meta name="author" content="Mundo dos Dados BR">
     <meta name="robots" content="index, follow">
+    
+    <!-- SEO Técnico: Canonical e Preconnect -->
+    <link rel="canonical" href="https://portal.mundodosdadosbr.com/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://storage.googleapis.com">
 
     <!-- Open Graph / Facebook / WhatsApp -->
     <meta property="og:type" content="website">
@@ -18,6 +24,7 @@
     <meta property="og:title" content="Mundo dos Dados BR - Conhecimento em Dados">
     <meta property="og:description" content="Aprenda Data Science, Python e Analytics com quem entende. Acesse nosso portal exclusivo com conteúdos agregados e IA.">
     <meta property="og:image" content="https://storage.googleapis.com/mdados-images-publics/images-portais-link/logo-social-preview.png">
+    <meta property="og:site_name" content="Mundo dos Dados BR">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
@@ -25,6 +32,46 @@
     <meta property="twitter:title" content="Mundo dos Dados BR">
     <meta property="twitter:description" content="O portal definitivo para Data Science, Analytics e Tecnologia.">
     <meta property="twitter:image" content="https://storage.googleapis.com/mdados-images-publics/images-portais-link/logo-social-preview.png">
+
+    <!-- JSON-LD Schema Markup (Structured Data) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Mundo dos Dados BR",
+      "url": "https://portal.mundodosdadosbr.com",
+      "logo": "https://storage.googleapis.com/mdados-images-publics/images-portais-link/logo-social-preview.png",
+      "founder": {
+        "@type": "Person",
+        "name": "Diego Morais"
+      },
+      "sameAs": [
+        "https://www.youtube.com/channel/UClkSY_UxzYYIwKH2rpTHcDw",
+        "https://instagram.com/mundodosdadosbrasil",
+        "https://www.linkedin.com/in/diego-nunes-de-morais-a74383a1/",
+        "https://github.com/mundodosdadosbr",
+        "https://www.tiktok.com/@mundo.dos.dados5"
+      ],
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "email": "diego.morais@mundodosdadosbr.com",
+        "contactType": "customer support"
+      }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "url": "https://portal.mundodosdadosbr.com",
+      "name": "Mundo dos Dados BR",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://portal.mundodosdadosbr.com/?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -99,4 +146,3 @@
     <div id="root"></div>
   </body>
 </html>
-    

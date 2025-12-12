@@ -12,6 +12,11 @@ interface PostCardProps {
 export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction, showAiAction }) => {
   const isVideo = post.platform === Platform.YOUTUBE || post.platform === Platform.TIKTOK;
 
+  // SEO: Create a meaningful description for the image alt tag
+  const altText = post.title 
+    ? `Vídeo sobre ${post.title} no ${post.platform} - Mundo dos Dados BR` 
+    : `Post sobre ${post.caption?.substring(0, 50)}... no ${post.platform} - Mundo dos Dados BR`;
+
   return (
     <div className="group relative bg-slate-800 rounded-xl overflow-hidden border border-slate-700 hover:border-slate-500 transition-all duration-300 shadow-lg hover:shadow-2xl flex flex-col h-full">
       {/* Image / Thumbnail - Clickable */}
@@ -20,10 +25,11 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction, showAiActi
         target="_blank" 
         rel="noopener noreferrer" 
         className="aspect-[4/5] w-full relative overflow-hidden bg-slate-900 block cursor-pointer"
+        title={post.title || post.caption}
       >
         <img 
           src={post.thumbnailUrl} 
-          alt="Thumbnail do post" 
+          alt={altText}
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-90 group-hover:opacity-100"
           loading="lazy"
         />
