@@ -69,6 +69,7 @@ export interface LandingPageContent {
   seoTitle?: string;
   seoDescription?: string;
   seoKeywords?: string;
+  googleVerificationId?: string; // Novo campo para Search Console
 }
 
 export interface TikTokAuthData {

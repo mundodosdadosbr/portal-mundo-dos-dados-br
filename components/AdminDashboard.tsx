@@ -533,7 +533,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
             
             {/* Rest of the component (tabs for integrations, content, etc) remains unchanged in structure... */}
-            {/* Integrations Tab */}
             {activeTab === 'integrations' && (
                 <div className="max-w-4xl space-y-8">
                      <h1 className="text-3xl font-bold">Integrações</h1>
@@ -775,7 +774,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <h2 className="text-xl font-bold mb-4 flex items-center gap-2 border-b border-slate-800 pb-2">
                              <Globe size={20} className="text-emerald-400" /> SEO & Indexação Google
                         </h2>
+                        
+                        <div className="bg-slate-950 p-4 rounded-lg border border-slate-700 mb-6 text-sm">
+                           <div className="flex items-start gap-3 mb-2">
+                              <AlertTriangle size={20} className="text-amber-400 flex-shrink-0" />
+                              <div>
+                                 <h4 className="font-bold text-white">Como aparecer no Google?</h4>
+                                 <p className="text-slate-400 mt-1">
+                                    Para o Google achar seu site rápido, você precisa cadastrá-lo no <strong>Google Search Console</strong>.
+                                 </p>
+                                 <ol className="list-decimal list-inside mt-2 space-y-1 text-slate-300">
+                                    <li>Acesse o <a href="https://search.google.com/search-console" target="_blank" className="text-indigo-400 underline">Search Console</a>.</li>
+                                    <li>Adicione a propriedade: <code>https://portal.mundodosdadosbr.com</code></li>
+                                    <li>Escolha o método <strong>"Tag HTML"</strong>.</li>
+                                    <li>Copie o código que parece com: <code>&lt;meta name="google-site-verification" content="..." /&gt;</code></li>
+                                    <li>Ou copie apenas o código "content" e cole abaixo.</li>
+                                 </ol>
+                              </div>
+                           </div>
+                        </div>
+
                         <div className="space-y-4 mb-8">
+                             <div>
+                                <label className="text-sm font-bold text-white mb-1 block">Código de Verificação do Google (HTML Tag)</label>
+                                <input 
+                                    type="text" 
+                                    value={landingContent.googleVerificationId || ''} 
+                                    onChange={(e) => handleLandingChange('googleVerificationId', e.target.value)} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-indigo-300 font-mono text-sm" 
+                                    placeholder='Ex: uL0... ou cole a tag <meta> inteira aqui'
+                                />
+                                <p className="text-xs text-slate-500 mt-1">Cole a tag inteira ou apenas o código hash. O sistema entende ambos.</p>
+                            </div>
+                             
+                             <div className="h-px bg-slate-800 my-6"></div>
+
                              <div>
                                 <label className="text-sm text-slate-400">Título da Página (Meta Title)</label>
                                 <input 

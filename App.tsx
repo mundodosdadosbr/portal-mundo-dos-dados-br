@@ -328,6 +328,17 @@ const App: React.FC = () => {
       if (landingContent.seoKeywords) {
           setMeta('keywords', landingContent.seoKeywords);
       }
+
+      // 5. Set Google Verification
+      if (landingContent.googleVerificationId) {
+          // Extracts code if user pasted full tag: <meta name="..." content="CODE" />
+          let code = landingContent.googleVerificationId;
+          const match = code.match(/content="([^"]+)"/);
+          if (match) {
+             code = match[1];
+          }
+          setMeta('google-site-verification', code);
+      }
   }, [landingContent, profile]);
 
 
