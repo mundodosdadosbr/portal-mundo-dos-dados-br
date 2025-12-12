@@ -1,5 +1,4 @@
 
-
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
@@ -273,6 +272,44 @@ export const subscribeToPosts = (
     posts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     onUpdate(posts);
   }, onError);
+};
+
+// --- VISITS / ANALYTICS ---
+
+export const logVisit = async () => {
+  // Simple session check to avoid counting refresh as new visit
+  const sessionKey = 'nexus_visit_logged';
+  if (sessionStorage.getItem(sessionKey)) {
+    return; // Already counted for this session
+  }
+
+  try {
+    const statsRef = db.collection('stats').doc('global');
+    // Using atomic increment
+    await statsRef.set({
+      totalVisits: firebase.firestore.FieldValue.increment(1),
+      lastVisit: new Date().toISOString()
+    }, { merge: true });
+    
+    sessionStorage.setItem(sessionKey, 'true');
+  } catch (e) {
+    console.warn("Analytics error:", e);
+  }
+};
+
+export const getSiteStats = async () => {
+  try {
+    const doc = await db.collection('stats').doc('global').get();
+    if (doc.exists) {
+      return {
+        totalVisits: doc.data()?.totalVisits || 0
+      };
+    }
+    return { totalVisits: 0 };
+  } catch (e) {
+    console.error("Error fetching stats:", e);
+    return { totalVisits: 0 };
+  }
 };
 
 // --- VIRTUAL FILES ---

@@ -1,15 +1,11 @@
 
-
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, Settings, RefreshCw, LogOut, Save, Youtube, 
   Instagram, Facebook, Trash2, Plus, Eye, Link2, TikTokIcon,
   TrendingUp, CloudLightning, Users, Bot, FileText, UploadCloud,
   X, CheckCircle, Lock, Zap, MessageSquare, BookOpen, Video, Clock,
-  AvailableIcons, AlertTriangle, Globe, ExternalLink, Database
+  AvailableIcons, AlertTriangle, Globe, ExternalLink, Database, Activity
 } from './Icons';
 import { 
   SocialPost, CreatorProfile, LandingPageContent, Platform, 
@@ -36,7 +32,8 @@ import {
   getVirtualFilesCloud, 
   saveVirtualFile, 
   deleteVirtualFile, 
-  VirtualFile 
+  VirtualFile,
+  getSiteStats
 } from '../services/firebase';
 
 interface AdminDashboardProps {
@@ -73,6 +70,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [visitStats, setVisitStats] = useState(0);
 
   // File System State
   const [virtualFiles, setVirtualFiles] = useState<VirtualFile[]>([]);
@@ -82,6 +80,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     if (activeTab === 'files') {
       getVirtualFilesCloud().then(setVirtualFiles);
+    }
+    if (activeTab === 'dashboard') {
+      getSiteStats().then(stats => setVisitStats(stats.totalVisits));
     }
   }, [activeTab]);
 
@@ -440,6 +441,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                         {/* Novo Card de Visitas */}
+                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 relative overflow-hidden group">
+                             <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-600/10 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                             <div className="flex items-start justify-between mb-4">
+                                <h3 className="text-slate-400 text-sm font-bold uppercase z-10">Acessos ao Portal</h3>
+                                <Activity size={24} className="text-indigo-400 z-10" />
+                             </div>
+                            <p className="text-3xl font-bold z-10 relative">{visitStats.toLocaleString('pt-BR')}</p>
+                            <p className="text-xs text-slate-500 mt-2 z-10 relative">Sessões totais</p>
+                        </div>
+
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
                             <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Total Posts</h3>
                             <p className="text-3xl font-bold">{posts.length}</p>
@@ -451,10 +463,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
                              <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Instagram Followers</h3>
                              <p className="text-3xl font-bold">{profile.platformStats?.instagramFollowers?.toLocaleString() || '-'}</p>
-                        </div>
-                        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                             <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">TikTok Followers</h3>
-                             <p className="text-3xl font-bold">{profile.platformStats?.tiktokFollowers?.toLocaleString() || '-'}</p>
                         </div>
                     </div>
                     

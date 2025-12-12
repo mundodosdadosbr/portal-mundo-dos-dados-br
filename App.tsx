@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { SocialPost, Platform, CreatorProfile, LandingPageContent, ChatbotConfig, TikTokAuthData, MetaAuthData } from './types';
 import { LandingPage } from './components/LandingPage';
@@ -24,7 +23,8 @@ import {
   initiateMfaSetup,
   verifyMfaToken,
   saveMfaSecret,
-  setUiSession
+  setUiSession,
+  logVisit
 } from './services/firebase';
 import { exchangeTikTokCode } from './services/tiktokService';
 
@@ -112,6 +112,9 @@ service cloud.firestore {
     match /{document=**} {
       allow read: if true;
       allow write: if request.auth != null;
+      match /stats/global {
+         allow write: if true; // Permitir incremento de contador anônimo
+      }
     }
   }
 }`}
@@ -138,6 +141,9 @@ const App: React.FC = () => {
   const [dbPermissionError, setDbPermissionError] = useState(false);
 
   useEffect(() => {
+    // Analytics: Log visit on load
+    logVisit();
+
     const checkPath = async () => {
       // OAUTH POPUP RELAY CHECK
       // If we are inside a popup and have a parent opener

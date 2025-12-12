@@ -48,7 +48,8 @@ import {
   Database,
   Code,
   ArrowRight,
-  Linkedin
+  Linkedin,
+  Activity
 } from 'lucide-react';
 
 export { 
@@ -99,7 +100,8 @@ export {
   Database,
   Code,
   ArrowRight,
-  Linkedin
+  Linkedin,
+  Activity
 };
 
 // Custom TikTok icon component
@@ -156,5 +158,6 @@ export const AvailableIcons: Record<string, React.ElementType> = {
   Settings,
   Database,
   Code,
+  Activity,
   Star: Sparkles // Alias
 };
