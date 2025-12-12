@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { SocialPost, Platform } from '../types';
 import { Heart, MessageCircle, Eye, Sparkles } from './Icons';
 
@@ -10,6 +10,7 @@ interface PostCardProps {
 }
 
 export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction, showAiAction }) => {
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
   const isVideo = post.platform === Platform.YOUTUBE || post.platform === Platform.TIKTOK;
 
   // SEO: Create a meaningful description for the image alt tag
@@ -27,16 +28,24 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction, showAiActi
         className="aspect-[4/5] w-full relative overflow-hidden bg-slate-900 block cursor-pointer"
         title={post.title || post.caption}
       >
+        {/* Skeleton Loader Background */}
+        <div className={`absolute inset-0 bg-slate-800 animate-pulse z-0 ${isImageLoaded ? 'hidden' : 'block'}`} />
+        
         <img 
           src={post.thumbnailUrl} 
           alt={altText}
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-90 group-hover:opacity-100"
+          className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-105 z-10 relative
+            ${isImageLoaded ? 'opacity-90 group-hover:opacity-100 blur-0' : 'opacity-0 blur-sm'}
+          `}
           loading="lazy"
+          onLoad={() => setIsImageLoaded(true)}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-80" />
+        
+        {/* Gradient Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-80 z-20 pointer-events-none" />
         
         {/* Platform Badge */}
-        <div className="absolute top-3 right-3 pointer-events-none">
+        <div className="absolute top-3 right-3 z-30 pointer-events-none">
           <span className={`
             px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm backdrop-blur-md
             ${post.platform === Platform.YOUTUBE ? 'bg-red-600/90 text-white' : ''}
