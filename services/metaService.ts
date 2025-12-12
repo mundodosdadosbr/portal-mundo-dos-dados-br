@@ -36,6 +36,38 @@ export const getMetaAuthUrl = (appId: string, forceRerequest: boolean = false) =
 };
 
 /**
+ * Exchange Short-Lived Token for Long-Lived Token (60 days)
+ */
+export const exchangeForLongLivedToken = async (
+  shortLivedToken: string,
+  appId: string,
+  appSecret: string
+) => {
+  if (!appId || !appSecret || !shortLivedToken) {
+    throw new Error("App ID e App Secret são obrigatórios para gerar token de longa duração.");
+  }
+
+  const url = `${GRAPH_API_URL}/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortLivedToken}`;
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(`Meta Token Exchange Error: ${data.error.message}`);
+    }
+
+    return {
+      accessToken: data.access_token,
+      expiresIn: data.expires_in // usually 5184000 (60 days)
+    };
+  } catch (error) {
+    console.error("Failed to exchange Meta token:", error);
+    throw error;
+  }
+};
+
+/**
  * Helper: Fetch User's Pages and linked Instagram Accounts (with Followers Count)
  */
 const getConnectedAccounts = async (accessToken: string) => {

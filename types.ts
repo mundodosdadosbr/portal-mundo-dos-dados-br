@@ -1,5 +1,4 @@
 
-
 export enum Platform {
   YOUTUBE = 'YouTube',
   INSTAGRAM = 'Instagram',
@@ -75,6 +74,7 @@ export interface TikTokAuthData {
 
 export interface MetaAuthData {
   appId: string;
+  appSecret?: string; // Novo campo para Long-Lived Tokens
   accessToken: string;
   expiresAt: number;
 }

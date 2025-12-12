@@ -198,6 +198,7 @@ const App: React.FC = () => {
 
   const [metaAuth, setMetaAuth] = useState<MetaAuthData>({
     appId: '',
+    appSecret: '', // Inicializando
     accessToken: '',
     expiresAt: 0
   });

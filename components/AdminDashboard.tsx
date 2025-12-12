@@ -26,7 +26,8 @@ import {
   getInstagramPosts, 
   getFacebookPosts, 
   getMetaPlatformStats,
-  debugMetaConnection 
+  debugMetaConnection,
+  exchangeForLongLivedToken
 } from '../services/metaService';
 import { 
   getVirtualFilesCloud, 
@@ -120,16 +121,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
          try {
             const hash = event.data.hash.substring(1); // remove #
             const params = new URLSearchParams(hash);
-            const accessToken = params.get('access_token');
+            const shortLivedToken = params.get('access_token');
             const expiresIn = params.get('expires_in');
             
-            if (accessToken) {
-               const expiry = expiresIn ? Date.now() + (parseInt(expiresIn) * 1000) : Date.now() + (3600 * 1000);
+            if (shortLivedToken) {
+               // TRY TO UPGRADE TO LONG-LIVED TOKEN IF APP SECRET IS PRESENT
+               let finalToken = shortLivedToken;
+               let finalExpiry = expiresIn ? Date.now() + (parseInt(expiresIn) * 1000) : Date.now() + (3600 * 1000);
+
+               if (metaAuth.appId && metaAuth.appSecret) {
+                  try {
+                      setIsConnecting(true);
+                      console.log("Trocando token Meta por longa duração...");
+                      const longData = await exchangeForLongLivedToken(shortLivedToken, metaAuth.appId, metaAuth.appSecret);
+                      finalToken = longData.accessToken;
+                      finalExpiry = Date.now() + (longData.expiresIn * 1000);
+                      alert("Meta: Token de longa duração (60 dias) gerado com sucesso!");
+                  } catch (upgradeErr: any) {
+                      console.error("Erro ao gerar token longa duração:", upgradeErr);
+                      alert("Aviso: Conectado com token de curta duração. Adicione o App Secret para ativar a renovação automática de 60 dias.");
+                  } finally {
+                      setIsConnecting(false);
+                  }
+               } else {
+                   alert("Conectado (Curta Duração). Para evitar reconexões frequentes, preencha o campo App Secret.");
+               }
+
                setMetaAuth({
-                 accessToken,
-                 expiresAt: expiry
+                 accessToken: finalToken,
+                 expiresAt: finalExpiry
                });
-               alert("Meta (Facebook/Instagram) conectado com sucesso via Pop-up!");
             }
          } catch (e) {
             console.error(e);
@@ -139,7 +160,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [tiktokAuth, setTiktokAuth, setMetaAuth]);
+  }, [tiktokAuth, setTiktokAuth, metaAuth, setMetaAuth]);
 
   // --- HELPERS ---
   const handleProfileChange = (field: keyof CreatorProfile, value: any) => {
@@ -233,6 +254,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
             tiktokAuth.expiresAt,
             (newAccess, newRefresh, newExpiry) => {
+                // IMPORTANT: This callback updates the token in DB when it refreshes automatically
                 setTiktokAuth({
                     accessToken: newAccess,
                     refreshToken: newRefresh,
@@ -589,14 +611,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <Instagram size={24} className="text-fuchsia-500" />
                             <h2 className="text-xl font-bold text-white">Meta (Facebook & Instagram)</h2>
                         </div>
-                         <div className="mb-4">
-                             <label className="block text-sm text-slate-400 mb-1">App ID</label>
-                             <input 
-                                type="text" 
-                                value={metaAuth.appId || ''}
-                                onChange={(e) => setMetaAuth({ appId: e.target.value })}
-                                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none"
-                            />
+
+                        {/* Info about Token Expiry */}
+                        <div className="bg-blue-500/10 border border-blue-500/20 text-blue-200 p-3 rounded-lg mb-4 text-sm flex gap-3">
+                           <Clock size={20} className="shrink-0 text-blue-400 mt-1"/>
+                           <div>
+                              <p className="font-bold text-white mb-1">Evite reconexões diárias!</p>
+                              <p className="opacity-80">
+                                 Para ativar a <strong>renovação automática (Token de 60 dias)</strong>, 
+                                 você precisa preencher o <strong>App Secret</strong> abaixo antes de conectar.
+                                 Sem isso, a conexão expira em 1-2 horas.
+                              </p>
+                           </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                             <div>
+                                 <label className="block text-sm text-slate-400 mb-1">App ID</label>
+                                 <input 
+                                    type="text" 
+                                    value={metaAuth.appId || ''}
+                                    onChange={(e) => setMetaAuth({ appId: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none"
+                                />
+                            </div>
+                            <div>
+                                 <label className="block text-sm text-slate-400 mb-1">App Secret</label>
+                                 <input 
+                                    type="password" 
+                                    value={metaAuth.appSecret || ''}
+                                    onChange={(e) => setMetaAuth({ appSecret: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none"
+                                    placeholder="Opcional mas recomendado"
+                                />
+                            </div>
                         </div>
                         
                         {/* Meta Actions Row */}
@@ -607,6 +655,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <span className="text-emerald-400 font-bold">Conectado</span>
                                 ) : (
                                     <span className="text-slate-500">Desconectado</span>
+                                )}
+                                {metaAuth.expiresAt && metaAuth.expiresAt > Date.now() && (
+                                    <span className="block text-xs text-slate-500 mt-1">
+                                        Expira em: {new Date(metaAuth.expiresAt).toLocaleDateString()}
+                                    </span>
                                 )}
                              </div>
                              
@@ -643,9 +696,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                  {/* Main Connect */}
                                  <button 
                                     onClick={() => startMetaAuth(false)}
-                                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold"
+                                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
                                  >
-                                    {metaAuth.accessToken ? "Reconectar (Pop-up)" : "Conectar (Pop-up)"}
+                                    {isConnecting && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                                    {metaAuth.accessToken ? "Reconectar" : "Conectar (Pop-up)"}
                                  </button>
                              </div>
                         </div>
