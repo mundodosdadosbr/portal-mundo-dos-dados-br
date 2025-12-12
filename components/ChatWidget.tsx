@@ -13,6 +13,45 @@ interface ChatWidgetProps {
   config: ChatbotConfig;
 }
 
+// Simple Markdown Renderer for Chat
+const renderMarkdown = (text: string) => {
+  // Split lines to handle paragraphs and lists
+  const lines = text.split('\n');
+  
+  return lines.map((line, i) => {
+    const trimmed = line.trim();
+    
+    // Handle Lists (* item or - item)
+    const isList = trimmed.startsWith('* ') || trimmed.startsWith('- ');
+    const cleanLine = isList ? trimmed.substring(2) : trimmed;
+
+    // Process Bold (**text**)
+    // Split by the bold pattern capturing the delimiter
+    const parts = cleanLine.split(/(\*\*.*?\*\*)/g);
+    
+    const renderedParts = parts.map((part, index) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={index} className="font-bold text-white">{part.slice(2, -2)}</strong>;
+      }
+      return <span key={index}>{part}</span>;
+    });
+
+    if (isList) {
+      return (
+        <div key={i} className="flex gap-2 ml-2 mb-1">
+          <span className="text-indigo-400 font-bold">•</span>
+          <span className="flex-1">{renderedParts}</span>
+        </div>
+      );
+    }
+
+    // Empty line treated as spacer
+    if (!trimmed) return <div key={i} className="h-2" />;
+
+    return <div key={i} className="mb-1 last:mb-0">{renderedParts}</div>;
+  });
+};
+
 export const ChatWidget: React.FC<ChatWidgetProps> = ({ config }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -87,7 +126,8 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({ config }) => {
                       ? 'bg-indigo-600 text-white rounded-br-none' 
                       : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-none'}
                  `}>
-                    {msg.content}
+                    {/* Use renderer instead of raw content */}
+                    {msg.role === 'assistant' ? renderMarkdown(msg.content) : msg.content}
                  </div>
                </div>
              ))}
