@@ -49,7 +49,7 @@ const INITIAL_LANDING_CONTENT: LandingPageContent = {
   subheadline: "Carregando configurações...",
   ctaButtonText: "Aguarde",
   logoUrl: "images/logo.png",
-  logoBucketUrl: "https://storage.googleapis.com/mdados-images-publics/images-portais-link/",
+  logoBucketUrl: "https://storage.googleapis.com/mdados-images-publics/images-portais-link/logo-social-preview.png",
   features: [
     { id: '1', title: "...", description: "...", icon: "TrendingUp" },
     { id: '2', title: "...", description: "...", icon: "CloudLightning" },
@@ -70,10 +70,11 @@ const RawTextRenderer = ({ content }: { content: string }) => {
       fontFamily: 'monospace',
       padding: '20px',
       margin: 0,
-      backgroundColor: 'white',
-      color: 'black',
-      height: '100vh',
-      overflow: 'auto'
+      backgroundColor: '#ffffff',
+      color: '#000000',
+      minHeight: '100vh',
+      fontSize: '14px',
+      lineHeight: '1.5'
     }}>
       {content}
     </pre>
@@ -167,10 +168,36 @@ const App: React.FC = () => {
 
       const path = window.location.pathname.substring(1);
       if (path && path !== '') {
-        const content = await checkVirtualFileContent(path);
+        // 1. Tentar buscar arquivo personalizado no banco (ex: tiktok_verify.txt)
+        let content = await checkVirtualFileContent(path);
+        
+        // 2. Fallback: Gerar automaticamente arquivos de SEO se não existirem
+        if (!content) {
+            if (path === 'robots.txt') {
+                content = `User-agent: *\nAllow: /\n\nSitemap: ${window.location.origin}/sitemap.xml`;
+            } else if (path === 'sitemap.xml') {
+                const baseUrl = window.location.origin;
+                const today = new Date().toISOString().split('T')[0];
+                content = [
+                    '<?xml version="1.0" encoding="UTF-8"?>',
+                    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+                    '  <url>',
+                    `    <loc>${baseUrl}/</loc>`,
+                    `    <lastmod>${today}</lastmod>`,
+                    '    <changefreq>daily</changefreq>',
+                    '    <priority>1.0</priority>',
+                    '  </url>',
+                    '</urlset>'
+                ].join('\n');
+            }
+        }
+
         if (content) {
           setVirtualFileContent(content);
-          document.title = path; 
+          // Only update title if not sitemap/robots to keep browser clean
+          if (path !== 'sitemap.xml' && path !== 'robots.txt') {
+             document.title = path;
+          }
         }
       }
       setIsCheckingFile(false);
@@ -307,7 +334,11 @@ const App: React.FC = () => {
   useEffect(() => {
       // 1. Update Title
       const seoTitle = landingContent.seoTitle || landingContent.headline || profile.name;
-      document.title = seoTitle;
+      
+      // Only update title if we are NOT viewing a virtual file (robots/sitemap)
+      if (virtualFileContent === null) {
+        document.title = seoTitle;
+      }
 
       // 2. Helper to set meta tags
       const setMeta = (name: string, content: string) => {
@@ -339,7 +370,7 @@ const App: React.FC = () => {
           }
           setMeta('google-site-verification', code);
       }
-  }, [landingContent, profile]);
+  }, [landingContent, profile, virtualFileContent]);
 
 
   // --- SAVE WRAPPERS ---
