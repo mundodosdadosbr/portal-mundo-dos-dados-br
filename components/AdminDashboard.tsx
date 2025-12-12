@@ -71,11 +71,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   
-  // Sync Status States
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const [lastSyncType, setLastSyncType] = useState<'Manual' | 'Auto' | null>(null);
-  const [nextSyncTime, setNextSyncTime] = useState<Date | null>(null);
-
   const [visitStats, setVisitStats] = useState(0);
 
   // File System State
@@ -288,7 +283,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
-      // 4. Update Profile
+      // 4. Update Profile & Sync Time
       const totalFollowers = 
         newStats.youtubeFollowers + 
         newStats.instagramFollowers + 
@@ -299,10 +294,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         return new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(n);
       };
 
-      const updatedProfile = {
+      const now = new Date();
+      const updatedProfile: CreatorProfile = {
         ...profile,
         subscribers: formatCount(totalFollowers),
-        platformStats: newStats
+        platformStats: newStats,
+        lastSyncTime: now.toISOString(), // PERSIST SYNC TIME
+        lastSyncType: isAuto ? 'Auto' : 'Manual' // PERSIST TYPE
       };
       
       setProfile(updatedProfile);
@@ -311,10 +309,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       
       if (dbActions) {
         dbActions.syncPosts(combinedPosts);
-        
-        // --- ATUALIZA STATUS DA SINCRONIZAÇÃO ---
-        setLastSyncTime(new Date());
-        setLastSyncType(isAuto ? 'Auto' : 'Manual');
 
         if (!isAuto) {
             let msg = `Sincronização concluída!\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nInstagram: ${igPosts.length}\nFacebook: ${fbPosts.length}`;
@@ -342,21 +336,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     const ONE_HOUR_MS = 60 * 60 * 1000;
     
-    // Set initial next sync time on mount
-    setNextSyncTime(new Date(Date.now() + ONE_HOUR_MS));
-
+    // Simple interval for current session execution
     const intervalId = setInterval(() => {
         console.log("⏰ Executing Auto-Sync...");
         if (handleSyncRef.current) {
             handleSyncRef.current(true); // Pass true for isAuto
         }
-        // Update next sync time after execution
-        setNextSyncTime(new Date(Date.now() + ONE_HOUR_MS));
     }, ONE_HOUR_MS);
 
     return () => clearInterval(intervalId);
   }, []);
 
+  // --- DISPLAY LOGIC FOR SYNC TIMES ---
+  const lastSyncDate = profile.lastSyncTime ? new Date(profile.lastSyncTime) : null;
+  // Calculate next sync based on last sync + 1 hour (fixed calculation)
+  const nextSyncDate = lastSyncDate 
+    ? new Date(lastSyncDate.getTime() + 60 * 60 * 1000) 
+    : new Date(Date.now() + 60 * 60 * 1000);
 
   // --- POPUP TRIGGERS ---
   const startTikTokAuth = () => {
@@ -477,22 +473,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </div>
                                 
                                 <div className="flex flex-col md:flex-row md:gap-4 text-slate-400">
-                                    {lastSyncTime ? (
+                                    {lastSyncDate ? (
                                         <span title="Horário da última execução">
-                                            Última: <span className="text-white font-mono">{lastSyncTime.toLocaleTimeString()}</span> 
-                                            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded uppercase font-bold ${lastSyncType === 'Auto' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-amber-500/20 text-amber-300'}`}>
-                                                {lastSyncType === 'Auto' ? 'Auto' : 'Manual'}
+                                            Última: <span className="text-white font-mono">{lastSyncDate.toLocaleTimeString()}</span> 
+                                            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded uppercase font-bold ${profile.lastSyncType === 'Auto' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                                                {profile.lastSyncType === 'Auto' ? 'Auto' : 'Manual'}
                                             </span>
                                         </span>
                                     ) : (
                                         <span>Aguardando execução...</span>
                                     )}
                                     
-                                    {nextSyncTime && (
-                                        <span className="md:border-l md:border-slate-700 md:pl-4" title="Próxima execução automática">
-                                            Próxima: <span className="text-white font-mono">{nextSyncTime.toLocaleTimeString()}</span>
-                                        </span>
-                                    )}
+                                    <span className="md:border-l md:border-slate-700 md:pl-4" title="Próxima execução automática">
+                                        Próxima: <span className="text-white font-mono">{nextSyncDate.toLocaleTimeString()}</span>
+                                    </span>
                                 </div>
                             </div>
                         </div>

@@ -33,6 +33,9 @@ export interface CreatorProfile {
     tiktokFollowers?: number;
     facebookFollowers?: number;
   };
+  // Sync Controls
+  lastSyncTime?: string;
+  lastSyncType?: 'Manual' | 'Auto';
 }
 
 export interface AiSuggestion {
