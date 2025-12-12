@@ -65,6 +65,10 @@ export interface LandingPageContent {
   logoBucketUrl?: string; // URL pública do bucket para imagens do carrossel
   features: FeatureItem[];
   chatbotConfig?: ChatbotConfig;
+  // SEO Fields
+  seoTitle?: string;
+  seoDescription?: string;
+  seoKeywords?: string;
 }
 
 export interface TikTokAuthData {

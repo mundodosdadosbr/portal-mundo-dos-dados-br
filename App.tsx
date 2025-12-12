@@ -300,9 +300,35 @@ const App: React.FC = () => {
         link.href = profile.faviconUrl;
         document.head.appendChild(link);
       }
-      document.title = profile.name;
     }
-  }, [profile.faviconUrl, profile.name]);
+  }, [profile.faviconUrl]);
+
+  // --- SEO METATAGS SYNC ---
+  useEffect(() => {
+      // 1. Update Title
+      const seoTitle = landingContent.seoTitle || landingContent.headline || profile.name;
+      document.title = seoTitle;
+
+      // 2. Helper to set meta tags
+      const setMeta = (name: string, content: string) => {
+          let element = document.querySelector(`meta[name='${name}']`);
+          if (!element) {
+              element = document.createElement('meta');
+              element.setAttribute('name', name);
+              document.head.appendChild(element);
+          }
+          element.setAttribute('content', content);
+      };
+
+      // 3. Set Description
+      const desc = landingContent.seoDescription || landingContent.subheadline || profile.bio;
+      setMeta('description', desc);
+
+      // 4. Set Keywords
+      if (landingContent.seoKeywords) {
+          setMeta('keywords', landingContent.seoKeywords);
+      }
+  }, [landingContent, profile]);
 
 
   // --- SAVE WRAPPERS ---

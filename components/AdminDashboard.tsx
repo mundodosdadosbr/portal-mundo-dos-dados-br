@@ -771,8 +771,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="max-w-4xl space-y-8">
                     <h1 className="text-3xl font-bold">Páginas (CMS)</h1>
                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                             <LayoutDashboard size={20} className="text-indigo-400" /> Landing Page
+                        {/* SEO SECTION */}
+                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2 border-b border-slate-800 pb-2">
+                             <Globe size={20} className="text-emerald-400" /> SEO & Indexação Google
+                        </h2>
+                        <div className="space-y-4 mb-8">
+                             <div>
+                                <label className="text-sm text-slate-400">Título da Página (Meta Title)</label>
+                                <input 
+                                    type="text" 
+                                    value={landingContent.seoTitle || ''} 
+                                    onChange={(e) => handleLandingChange('seoTitle', e.target.value)} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" 
+                                    placeholder="Ex: Mundo dos Dados BR - Portal Oficial"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">Este é o texto que aparece na aba do navegador e nos resultados do Google.</p>
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Descrição (Meta Description)</label>
+                                <textarea 
+                                    value={landingContent.seoDescription || ''} 
+                                    onChange={(e) => handleLandingChange('seoDescription', e.target.value)} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-20" 
+                                    placeholder="Resumo curto sobre o seu canal (máx 160 caracteres)"
+                                />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Palavras-chave (Keywords)</label>
+                                <input 
+                                    type="text" 
+                                    value={landingContent.seoKeywords || ''} 
+                                    onChange={(e) => handleLandingChange('seoKeywords', e.target.value)} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" 
+                                    placeholder="Ex: dados, python, power bi, tecnologia"
+                                />
+                            </div>
+                        </div>
+
+                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2 border-b border-slate-800 pb-2 pt-4">
+                             <LayoutDashboard size={20} className="text-indigo-400" /> Landing Page Visual
                         </h2>
                         <div className="space-y-4">
                             <div>
@@ -875,7 +912,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                 </div>
             )}
-
+            
+            {/* Rest of the component code (posts, chatbot, files) remains the same ... */}
             {activeTab === 'posts' && (
                 <div className="space-y-6">
                      <div className="flex justify-between items-center">
