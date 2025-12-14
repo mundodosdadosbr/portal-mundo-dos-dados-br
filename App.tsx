@@ -174,7 +174,7 @@ const App: React.FC = () => {
         // 2. Fallback: Gerar automaticamente arquivos de SEO se não existirem
         if (!content) {
             if (path === 'robots.txt') {
-                content = `User-agent: *\nAllow: /\n\nSitemap: ${window.location.origin}/sitemap.xml`;
+                content = `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /private\n\nSitemap: ${window.location.origin}/sitemap.xml`;
             } else if (path === 'sitemap.xml') {
                 const baseUrl = window.location.origin;
                 const today = new Date().toISOString().split('T')[0];
