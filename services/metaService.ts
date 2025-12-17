@@ -151,8 +151,8 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
 
     const igUserId = igPage.instagram_business_account.id;
 
-    // Fetch Media
-    const mediaUrl = `${GRAPH_API_URL}/${igUserId}/media?fields=id,caption,media_type,media_url,permalink,thumbnail_url,like_count,comments_count,timestamp&limit=20&access_token=${accessToken}`;
+    // Fetch Media - Added 'video_views' to fields
+    const mediaUrl = `${GRAPH_API_URL}/${igUserId}/media?fields=id,caption,media_type,media_url,permalink,thumbnail_url,like_count,comments_count,timestamp,video_views&limit=20&access_token=${accessToken}`;
     
     const response = await fetch(mediaUrl);
     const data = await response.json();
@@ -172,7 +172,7 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
         thumbnailUrl: imageUrl,
         likes: item.like_count || 0,
         comments: item.comments_count || 0,
-        views: 0, 
+        views: item.video_views || 0, // Agora capturando as visualizações reais de vídeos/reels
         date: item.timestamp,
         url: item.permalink
       };
