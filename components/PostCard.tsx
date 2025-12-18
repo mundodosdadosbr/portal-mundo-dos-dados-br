@@ -11,14 +11,15 @@ interface PostCardProps {
 
 export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction, showAiAction }) => {
   const [isImageLoaded, setIsImageLoaded] = useState(false);
-  
+  const isVideo = post.platform === Platform.YOUTUBE || post.platform === Platform.TIKTOK;
+
   // SEO: Create a meaningful description for the image alt tag
   const altText = post.title 
     ? `Vídeo sobre ${post.title} no ${post.platform} - Mundo dos Dados BR` 
     : `Post sobre ${post.caption?.substring(0, 50)}... no ${post.platform} - Mundo dos Dados BR`;
 
   return (
-    <div className="group relative bg-slate-800/40 rounded-xl overflow-hidden border border-slate-700/50 hover:border-indigo-500/50 transition-all duration-300 shadow-lg hover:shadow-2xl flex flex-col h-full backdrop-blur-sm">
+    <div className="group relative bg-slate-800 rounded-xl overflow-hidden border border-slate-700 hover:border-slate-500 transition-all duration-300 shadow-lg hover:shadow-2xl flex flex-col h-full">
       {/* Image / Thumbnail - Clickable */}
       <a 
         href={post.url} 
@@ -41,16 +42,16 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction, showAiActi
         />
         
         {/* Gradient Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-transparent to-transparent opacity-80 z-20 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-80 z-20 pointer-events-none" />
         
         {/* Platform Badge */}
         <div className="absolute top-3 right-3 z-30 pointer-events-none">
           <span className={`
-            px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest shadow-lg backdrop-blur-md border border-white/10
+            px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-sm backdrop-blur-md
             ${post.platform === Platform.YOUTUBE ? 'bg-red-600/90 text-white' : ''}
-            ${post.platform === Platform.INSTAGRAM ? 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 text-white' : ''}
+            ${post.platform === Platform.INSTAGRAM ? 'bg-fuchsia-600/90 text-white' : ''}
             ${post.platform === Platform.FACEBOOK ? 'bg-blue-600/90 text-white' : ''}
-            ${post.platform === Platform.TIKTOK ? 'bg-slate-950 text-emerald-400' : ''}
+            ${post.platform === Platform.TIKTOK ? 'bg-teal-500/90 text-slate-900' : ''}
           `}>
             {post.platform}
           </span>
@@ -58,7 +59,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction, showAiActi
       </a>
 
       {/* Content */}
-      <div className="flex flex-col flex-grow p-5">
+      <div className="flex flex-col flex-grow p-4">
         {post.title && (
           <a href={post.url} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-400 transition-colors">
             <h3 className="text-white font-bold text-lg mb-2 line-clamp-2 leading-tight">
@@ -68,29 +69,25 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction, showAiActi
         )}
         
         {post.caption && (
-          <p className="text-slate-300 text-sm mb-4 line-clamp-2 flex-grow leading-relaxed">
+          <p className="text-slate-300 text-sm mb-3 line-clamp-2 flex-grow">
             {post.caption}
           </p>
         )}
 
         {/* Stats Row */}
-        <div className="flex items-center justify-between text-slate-300 text-xs mt-auto border-t border-slate-700/50 pt-4">
+        <div className="flex items-center justify-between text-slate-400 text-xs mt-2 border-t border-slate-700/50 pt-3">
           <div className="flex items-center space-x-4 w-full">
-            <span className="flex items-center space-x-1.5 group/stat" title="Curtidas">
-              <Heart size={16} className="text-rose-500 fill-rose-500/10 group-hover/stat:fill-rose-500 transition-all" />
-              <span className="font-bold">{typeof post.likes === 'number' && post.likes > 0 ? post.likes.toLocaleString('pt-BR') : '-'}</span>
+            <span className="flex items-center space-x-1" title="Curtidas">
+              <Heart size={14} className="text-rose-500" />
+              <span>{post.likes > 0 ? post.likes.toLocaleString('pt-BR') : '-'}</span>
             </span>
-            <span className="flex items-center space-x-1.5 group/stat" title="Comentários">
-              <MessageCircle size={16} className="text-sky-400 fill-sky-400/10 group-hover/stat:fill-sky-400 transition-all" />
-              <span className="font-bold">{typeof post.comments === 'number' && post.comments > 0 ? post.comments.toLocaleString('pt-BR') : '-'}</span>
+            <span className="flex items-center space-x-1" title="Comentários">
+              <MessageCircle size={14} className="text-sky-400" />
+              <span>{post.comments > 0 ? post.comments.toLocaleString('pt-BR') : '-'}</span>
             </span>
-            <span className="flex items-center space-x-1.5 ml-auto group/stat" title="Visualizações">
-              <Eye size={16} className="text-emerald-400 fill-emerald-400/10 group-hover/stat:fill-emerald-400 transition-all" />
-              <span className="font-bold">
-                {typeof post.views === 'number' 
-                    ? post.views.toLocaleString('pt-BR') 
-                    : '-'}
-              </span>
+            <span className="flex items-center space-x-1 ml-auto" title="Visualizações">
+              <Eye size={14} className="text-emerald-400" />
+              <span>{post.views && post.views > 0 ? post.views.toLocaleString('pt-BR') : '0'}</span>
             </span>
           </div>
         </div>
@@ -100,7 +97,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onAiAction, showAiActi
           <div className="mt-4 overflow-hidden h-0 group-hover:h-10 transition-all duration-300">
             <button 
               onClick={() => onAiAction(post)}
-              className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm font-bold py-2 rounded-lg transition-all shadow-lg shadow-indigo-500/20"
+              className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-sm font-medium py-2 rounded-lg transition-colors"
             >
               <Sparkles size={16} />
               <span>Remixar com IA</span>

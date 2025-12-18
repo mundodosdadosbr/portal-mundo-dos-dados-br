@@ -5,8 +5,9 @@ import { SocialPost, Platform } from '../types';
 const GRAPH_API_VERSION = 'v19.0';
 const GRAPH_API_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 
-// Helper to get Redirect URI
+// Helper to get Redirect URI (must match exactly in Meta App Dashboard)
 export const getMetaRedirectUri = () => {
+  // Facebook prefers the origin without trailing slash for App Domains matching
   return window.location.origin.endsWith('/') 
     ? window.location.origin.slice(0, -1) 
     : window.location.origin;
@@ -58,7 +59,7 @@ export const exchangeForLongLivedToken = async (
 
     return {
       accessToken: data.access_token,
-      expiresIn: data.expires_in
+      expiresIn: data.expires_in // usually 5184000 (60 days)
     };
   } catch (error) {
     console.error("Failed to exchange Meta token:", error);
@@ -67,21 +68,29 @@ export const exchangeForLongLivedToken = async (
 };
 
 /**
- * Helper: Fetch User's Pages and linked Instagram Accounts
+ * Helper: Fetch User's Pages and linked Instagram Accounts (with Followers Count)
  */
 const getConnectedAccounts = async (accessToken: string) => {
   try {
+    // Request nested fields: instagram_business_account{id,username,followers_count}
+    // Added followers_count to the fields
     const fields = 'id,name,followers_count,access_token,instagram_business_account{id,username,profile_picture_url,followers_count}';
     const response = await fetch(`${GRAPH_API_URL}/me/accounts?fields=${fields}&access_token=${accessToken}`);
     const data = await response.json();
     
     if (data.error) throw new Error(data.error.message);
     
+    // Fallback logic
     if ((!data.data || data.data.length === 0)) {
+        console.warn("Listagem vazia. Tentando buscar página específica...");
         const targetPageId = '262931593566452'; 
+        
         const directResp = await fetch(`${GRAPH_API_URL}/${targetPageId}?fields=${fields}&access_token=${accessToken}`);
         const directData = await directResp.json();
-        if (directData.id) return [directData];
+        
+        if (directData.id) {
+            return [directData];
+        }
     }
     
     return data.data || [];
@@ -99,9 +108,11 @@ export const getMetaPlatformStats = async (accessToken: string) => {
   
   try {
     const pages = await getConnectedAccounts(accessToken);
+    
     let igFollowers = 0;
     let fbFollowers = 0;
 
+    // Sum up followers from all connected pages/accounts found
     pages.forEach((p: any) => {
        if (p.instagram_business_account && p.instagram_business_account.followers_count) {
          igFollowers += p.instagram_business_account.followers_count;
@@ -140,24 +151,8 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
 
     const igUserId = igPage.instagram_business_account.id;
 
-    // Campos essenciais para Reels e Posts de Imagem
-    const fields = [
-        'id',
-        'caption',
-        'media_type',
-        'media_product_type',
-        'media_url',
-        'permalink',
-        'thumbnail_url',
-        'timestamp',
-        'like_count',
-        'comments_count',
-        'video_views',
-        'play_count',
-        'insights.metric(plays,reach,impressions)'
-    ].join(',');
-
-    const mediaUrl = `${GRAPH_API_URL}/${igUserId}/media?fields=${fields}&limit=30&access_token=${accessToken}`;
+    // Fetch Media
+    const mediaUrl = `${GRAPH_API_URL}/${igUserId}/media?fields=id,caption,media_type,media_url,permalink,thumbnail_url,like_count,comments_count,timestamp&limit=20&access_token=${accessToken}`;
     
     const response = await fetch(mediaUrl);
     const data = await response.json();
@@ -165,45 +160,19 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
     if (data.error) throw new Error(data.error.message);
 
     return (data.data || []).map((item: any) => {
-      let thumbnailUrl = item.media_url;
-      if (item.media_type === 'VIDEO') {
-          thumbnailUrl = item.thumbnail_url || item.media_url;
-      } else if (item.media_type === 'CAROUSEL_ALBUM') {
-          thumbnailUrl = item.media_url || item.thumbnail_url;
-      }
-
-      // 1. EXTRAÇÃO DE VIEWS (ORDEM DE PREFERÊNCIA PARA REELS)
-      // O campo play_count é o valor público do Reels.
-      let views = Number(item.play_count) || Number(item.video_views) || 0;
-      
-      // Se play_count for 0 ou nulo, tentamos o insight de 'plays' (lifetime)
-      if (item.insights && item.insights.data) {
-          const playsMetric = item.insights.data.find((m: any) => m.name === 'plays');
-          const reachMetric = item.insights.data.find((m: any) => m.name === 'reach');
-
-          if (playsMetric?.values?.[0]) {
-              // Plays do insight costuma ser o mais preciso para Reels
-              views = Math.max(views, Number(playsMetric.values[0].value));
-          } else if (views === 0 && reachMetric?.values?.[0]) {
-              // Para imagens, o Reach é o nosso substituto de visualizações
-              views = Number(reachMetric.values[0].value);
-          }
-      }
-
-      // 2. EXTRAÇÃO DE LIKES
-      // like_count é o campo padrão. Em contas business, ele retorna o total.
-      const likes = Number(item.like_count) || 0;
-      const comments = Number(item.comments_count) || 0;
+      let imageUrl = item.media_url;
+      if (item.media_type === 'VIDEO') imageUrl = item.thumbnail_url || item.media_url;
+      else if (item.media_type === 'CAROUSEL_ALBUM') imageUrl = item.media_url || item.thumbnail_url;
 
       return {
         id: item.id,
         platform: Platform.INSTAGRAM,
         title: '', 
         caption: item.caption || '',
-        thumbnailUrl: thumbnailUrl,
-        likes: likes,
-        comments: comments,
-        views: views,
+        thumbnailUrl: imageUrl,
+        likes: item.like_count || 0,
+        comments: item.comments_count || 0,
+        views: 0, 
         date: item.timestamp,
         url: item.permalink
       };
@@ -220,6 +189,7 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
  */
 export const getFacebookPosts = async (accessToken: string): Promise<SocialPost[]> => {
   if (!accessToken) return [];
+
   const TARGET_PAGE_ID = '262931593566452'; 
 
   try {
@@ -264,35 +234,57 @@ export const debugMetaConnection = async (accessToken: string) => {
   logs.push("--- INICIANDO DIAGNÓSTICO META ---");
   
   if (!accessToken) {
-    logs.push("ERRO: Nenhum Access Token encontrado.");
+    logs.push("ERRO: Nenhum Access Token encontrado. Conecte-se primeiro.");
     return logs;
   }
 
   try {
-    logs.push("Verificando permissões...");
+    logs.push("Verificando escopos concedidos (/me/permissions)...");
     const permResp = await fetch(`${GRAPH_API_URL}/me/permissions?access_token=${accessToken}`);
     const permData = await permResp.json();
+    let allGranted = true;
     if (permData.data) {
         permData.data.forEach((p: any) => {
             logs.push(` - ${p.permission}: ${p.status}`);
+            if (p.status !== 'granted') allGranted = false;
         });
     }
 
+    logs.push("Buscando Páginas...");
     const pages = await getConnectedAccounts(accessToken);
-    logs.push(`Páginas vinculadas: ${pages.length}`);
+    logs.push(`Encontradas: ${pages.length} páginas.`);
 
-    pages.forEach((page: any) => {
-      logs.push(`- ${page.name} (ID: ${page.id})`);
+    if (pages.length === 0) {
+      logs.push("ALERTA CRÍTICO: Nenhuma página retornada.");
+      return logs;
+    }
+
+    let igFound = false;
+    for (const page of pages) {
+      logs.push(`---`);
+      logs.push(`Página FB: "${page.name}" (ID: ${page.id})`);
+      logs.push(`Seguidores FB: ${page.followers_count || 0}`);
+      
       if (page.instagram_business_account) {
-        logs.push(`  ✅ Instagram associado: @${page.instagram_business_account.username}`);
-        logs.push(`  📊 Seguidores IG: ${page.instagram_business_account.followers_count || 0}`);
+        igFound = true;
+        const igUser = page.instagram_business_account.username || 'Desconhecido';
+        logs.push(`✅ VINCULADO: Instagram @${igUser} (ID: ${page.instagram_business_account.id})`);
+        logs.push(`Seguidores IG: ${page.instagram_business_account.followers_count || 0}`);
       } else {
-        logs.push(`  ❌ Sem conta Instagram Business vinculada.`);
+        logs.push("⚠️ SEM VÍNCULO: Esta página não tem conta Instagram Business associada.");
       }
-    });
+    }
+    
+    if (!igFound) {
+       logs.push("---");
+       logs.push("RESUMO: O vínculo com o Instagram não foi detectado.");
+    } else {
+       logs.push("---");
+       logs.push("STATUS: Configuração parece correta! Tente 'Sincronizar Tudo' agora.");
+    }
 
   } catch (error: any) {
-    logs.push(`ERRO: ${error.message}`);
+    logs.push(`ERRO GERAL: ${error.message}`);
   }
 
   return logs;

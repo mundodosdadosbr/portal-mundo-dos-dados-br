@@ -90,6 +90,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --- POPUP LISTENER FOR AUTH ---
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
+      // Security check: ensure message comes from same origin
       if (event.origin !== window.location.origin) return;
 
       if (event.data.type === 'TIKTOK_CODE') {
@@ -115,29 +116,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
 
       if (event.data.type === 'META_TOKEN') {
+         // Parse the hash sent from popup
+         // format: #access_token=...&expires_in=...
          try {
-            const hash = event.data.hash.substring(1);
+            const hash = event.data.hash.substring(1); // remove #
             const params = new URLSearchParams(hash);
             const shortLivedToken = params.get('access_token');
             const expiresIn = params.get('expires_in');
             
             if (shortLivedToken) {
+               // TRY TO UPGRADE TO LONG-LIVED TOKEN IF APP SECRET IS PRESENT
                let finalToken = shortLivedToken;
                let finalExpiry = expiresIn ? Date.now() + (parseInt(expiresIn) * 1000) : Date.now() + (3600 * 1000);
 
                if (metaAuth.appId && metaAuth.appSecret) {
                   try {
                       setIsConnecting(true);
+                      console.log("Trocando token Meta por longa duração...");
                       const longData = await exchangeForLongLivedToken(shortLivedToken, metaAuth.appId, metaAuth.appSecret);
                       finalToken = longData.accessToken;
                       finalExpiry = Date.now() + (longData.expiresIn * 1000);
                       alert("Meta: Token de longa duração (60 dias) gerado com sucesso!");
                   } catch (upgradeErr: any) {
                       console.error("Erro ao gerar token longa duração:", upgradeErr);
-                      alert("Aviso: Conectado com token de curta duração.");
+                      alert("Aviso: Conectado com token de curta duração. Adicione o App Secret para ativar a renovação automática de 60 dias.");
                   } finally {
                       setIsConnecting(false);
                   }
+               } else {
+                   alert("Conectado (Curta Duração). Para evitar reconexões frequentes, preencha o campo App Secret.");
                }
 
                setMetaAuth({
@@ -195,19 +202,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (isSyncing) return;
     setIsSyncing(true);
     
+    // Preserve existing stats if fetch fails, or init 0
     const newStats = {
       youtubeFollowers: profile.platformStats?.youtubeFollowers || 0,
       instagramFollowers: profile.platformStats?.instagramFollowers || 0,
       tiktokFollowers: profile.platformStats?.tiktokFollowers || 0,
       facebookFollowers: profile.platformStats?.facebookFollowers || 0
-    };
-
-    const updateTokenCallback = (newAccess: string, newRefresh: string, newExpiry: number) => {
-        setTiktokAuth({
-            accessToken: newAccess,
-            refreshToken: newRefresh,
-            expiresAt: newExpiry
-        });
     };
 
     try {
@@ -224,35 +224,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 else if (rawStr.toUpperCase().includes('M')) num *= 1000000;
                 newStats.youtubeFollowers = num;
             }
-         } catch (e) {}
+         } catch (e) {
+             console.error("YouTube Sync Error", e);
+         }
       }
 
       // 2. TikTok
       let tiktokPosts: SocialPost[] = [];
+      
+      // Tenta estatísticas separadamente para não bloquear posts
       if (tiktokAuth.accessToken) {
          try {
-             const ttStats = await getTikTokUserStats(
-                 tiktokAuth.accessToken,
-                 tiktokAuth.refreshToken,
-                 tiktokAuth.clientKey || DEFAULT_CLIENT_KEY,
-                 tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
-                 tiktokAuth.expiresAt,
-                 updateTokenCallback
-             );
-             if (ttStats.followers !== undefined) {
-                 newStats.tiktokFollowers = ttStats.followers;
-             }
-             
-             tiktokPosts = await getTikTokPosts(
-                '@mundo.dos.dados5', 
-                tiktokAuth.accessToken,
-                tiktokAuth.refreshToken,
-                tiktokAuth.clientKey || DEFAULT_CLIENT_KEY,
-                tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
-                tiktokAuth.expiresAt,
-                updateTokenCallback
-             );
-         } catch (ttErr) {}
+             const ttStats = await getTikTokUserStats(tiktokAuth.accessToken);
+             if (ttStats.followers > 0) newStats.tiktokFollowers = ttStats.followers;
+         } catch (statsErr) {
+             console.error("TikTok Stats Error:", statsErr);
+             // Não lança erro, apenas segue
+         }
+      }
+
+      // Tenta posts
+      if (tiktokAuth.accessToken) {
+        try {
+            tiktokPosts = await getTikTokPosts(
+            '@mundo.dos.dados5', 
+            tiktokAuth.accessToken,
+            tiktokAuth.refreshToken,
+            tiktokAuth.clientKey || DEFAULT_CLIENT_KEY,
+            tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
+            tiktokAuth.expiresAt,
+            (newAccess, newRefresh, newExpiry) => {
+                // IMPORTANT: This callback updates the token in DB when it refreshes automatically
+                setTiktokAuth({
+                    accessToken: newAccess,
+                    refreshToken: newRefresh,
+                    expiresAt: newExpiry
+                });
+            }
+            );
+        } catch (ttErr) {
+            console.error("TikTok Sync Error", ttErr);
+        }
       }
 
       // 3. Meta
@@ -266,15 +278,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           igPosts = await getInstagramPosts(metaAuth.accessToken);
           fbPosts = await getFacebookPosts(metaAuth.accessToken);
-        } catch (metaError) {}
+        } catch (metaError) {
+          console.error("Meta Sync Failed:", metaError);
+        }
       }
 
-      // 4. Update Profile
+      // 4. Update Profile & Sync Time
       const totalFollowers = 
-        (Number(newStats.youtubeFollowers) || 0) + 
-        (Number(newStats.instagramFollowers) || 0) + 
-        (Number(newStats.tiktokFollowers) || 0) + 
-        (Number(newStats.facebookFollowers) || 0);
+        newStats.youtubeFollowers + 
+        newStats.instagramFollowers + 
+        newStats.tiktokFollowers + 
+        newStats.facebookFollowers;
 
       const formatCount = (n: number) => {
         return new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(n);
@@ -285,8 +299,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ...profile,
         subscribers: formatCount(totalFollowers),
         platformStats: newStats,
-        lastSyncTime: now.toISOString(),
-        lastSyncType: isAuto ? 'Auto' : 'Manual'
+        lastSyncTime: now.toISOString(), // PERSIST SYNC TIME
+        lastSyncType: isAuto ? 'Auto' : 'Manual' // PERSIST TYPE
       };
       
       setProfile(updatedProfile);
@@ -295,8 +309,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       
       if (dbActions) {
         dbActions.syncPosts(combinedPosts);
+
         if (!isAuto) {
-            alert(`Sincronização concluída!\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nInstagram: ${igPosts.length}\nFacebook: ${fbPosts.length}\n\nTotal de Seguidores: ${totalFollowers}`);
+            let msg = `Sincronização concluída!\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nInstagram: ${igPosts.length}\nFacebook: ${fbPosts.length}`;
+            alert(msg);
         }
       } else {
         setPosts(combinedPosts);
@@ -311,6 +327,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // --- AUTO SYNC (1 HOUR) ---
+  // Use a ref to keep the latest handleSync without breaking the interval
   const handleSyncRef = useRef(handleSync);
   useEffect(() => {
     handleSyncRef.current = handleSync;
@@ -318,13 +335,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   useEffect(() => {
     const ONE_HOUR_MS = 60 * 60 * 1000;
+    
+    // Simple interval for current session execution
     const intervalId = setInterval(() => {
-        if (handleSyncRef.current) handleSyncRef.current(true);
+        console.log("⏰ Executing Auto-Sync...");
+        if (handleSyncRef.current) {
+            handleSyncRef.current(true); // Pass true for isAuto
+        }
     }, ONE_HOUR_MS);
+
     return () => clearInterval(intervalId);
   }, []);
 
+  // --- DISPLAY LOGIC FOR SYNC TIMES ---
   const lastSyncDate = profile.lastSyncTime ? new Date(profile.lastSyncTime) : null;
+  // Calculate next sync based on last sync + 1 hour (fixed calculation)
   const nextSyncDate = lastSyncDate 
     ? new Date(lastSyncDate.getTime() + 60 * 60 * 1000) 
     : new Date(Date.now() + 60 * 60 * 1000);
@@ -332,7 +357,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --- POPUP TRIGGERS ---
   const startTikTokAuth = () => {
      const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
-     if (!key.trim()) { alert("O campo Client Key está vazio."); return; }
+     // Validate basic mistakes
+     if (!key.trim()) {
+       alert("O campo Client Key está vazio.");
+       return;
+     }
+     if (/^\d+$/.test(key.trim()) && key.trim().length > 10) {
+       alert("Erro: Você inseriu apenas números na Client Key.\n\nIsso parece ser o App ID. A Client Key é um código diferente (ex: aw3f...). Verifique no portal do TikTok.");
+       return;
+     }
+
      const url = getTikTokAuthUrl(key.trim());
      window.open(url, 'TikTok Auth', 'width=600,height=700,status=yes,scrollbars=yes');
   };
@@ -342,41 +376,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
      window.open(url, 'Meta Auth', 'width=600,height=700,status=yes,scrollbars=yes');
   };
 
-  const handleTestTikTok = async () => {
-      if (!tiktokAuth.accessToken) {
-          alert("TikTok não conectado. Conecte primeiro.");
-          return;
-      }
-      setIsConnecting(true);
-      try {
-          const stats = await getTikTokUserStats(
-              tiktokAuth.accessToken,
-              tiktokAuth.refreshToken,
-              tiktokAuth.clientKey || DEFAULT_CLIENT_KEY,
-              tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
-              tiktokAuth.expiresAt,
-              (newAccess, newRefresh, newExpiry) => {
-                setTiktokAuth({
-                    accessToken: newAccess,
-                    refreshToken: newRefresh,
-                    expiresAt: newExpiry
-                });
-              }
-          );
-          if (stats.error) {
-              alert(`Falha no Diagnóstico TikTok:\nErro: ${stats.error}\n\nVerifique se o token é válido ou tente Reconectar.`);
-          } else {
-              alert(`Diagnóstico TikTok OK!\nUsuário: ${stats.displayName}\nSeguidores: ${stats.followers}\n\nConexão está funcionando corretamente.`);
-          }
-      } catch (e: any) {
-          alert(`Erro inesperado no teste: ${e.message}`);
-      } finally {
-          setIsConnecting(false);
-      }
-  };
-
   const handleResetMeta = () => {
-    if (confirm("Deseja abrir o guia de reset manual no Facebook?")) {
+    if (confirm("Isso abrirá a página do Facebook para você remover o aplicativo 'CreatorNexus' (ou similar) manualmente. Depois, tente conectar novamente selecionando todas as páginas.\n\nDeseja continuar?")) {
         window.open('https://www.facebook.com/settings?tab=business_tools', '_blank');
     }
   };
@@ -384,11 +385,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleDebugMeta = async () => {
     if (!metaAuth.accessToken) return;
     const logs = await debugMetaConnection(metaAuth.accessToken);
+    
+    // Create a simple modal or alert with logs
     const logString = logs.join('\n');
+    
+    // Check for critical "Page not found" error to suggest reset
     if (logString.includes("ALERTA CRÍTICO") || logString.includes("0 páginas")) {
-        if(confirm(`DIAGNÓSTICO:\n${logString}\n\nDetectado problema de permissão. Resetar?`)) handleResetMeta();
+        if(confirm(`DIAGNÓSTICO:\n${logString}\n\nO sistema detectou um problema de permissão. Deseja abrir o guia de reset manual?`)) {
+            handleResetMeta();
+        }
     } else {
-        alert(`Relatório Meta\n\n${logString}`);
+        alert(`Relatório de Diagnóstico\n\n${logString}`);
     }
   };
 
@@ -409,10 +416,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex">
+        {/* Sidebar */}
         <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col fixed h-full z-10">
             <div className="p-6 border-b border-slate-800">
                 <h2 className="text-xl font-bold flex items-center gap-2">
-                    <LayoutDashboard className="text-indigo-500" /> Admin
+                    <LayoutDashboard className="text-indigo-500" />
+                    Admin
                 </h2>
             </div>
             <nav className="flex-grow p-4 space-y-2 overflow-y-auto">
@@ -448,95 +457,146 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
         </aside>
 
+        {/* Main Content */}
         <main className="ml-64 flex-1 p-8 overflow-y-auto">
             {activeTab === 'dashboard' && (
                 <div className="space-y-6">
                     <div className="flex justify-between items-center">
                         <h1 className="text-3xl font-bold">Visão Geral</h1>
+                        
+                        {/* Status do Auto-Sync Melhorado */}
                         <div className="flex flex-col md:flex-row items-end md:items-center gap-3">
                              <div className="flex items-center gap-3 text-xs bg-slate-900 px-4 py-2 rounded-lg border border-slate-800 shadow-sm">
                                 <div className="flex items-center gap-2 text-emerald-400 font-bold border-r border-slate-700 pr-3">
                                     <Clock size={14} className="animate-pulse" />
                                     <span>Auto-Sync (1h)</span>
                                 </div>
+                                
                                 <div className="flex flex-col md:flex-row md:gap-4 text-slate-400">
                                     {lastSyncDate ? (
-                                        <span>Última: <span className="text-white font-mono">{lastSyncDate.toLocaleTimeString()}</span> ({profile.lastSyncType})</span>
+                                        <span title="Horário da última execução">
+                                            Última: <span className="text-white font-mono">{lastSyncDate.toLocaleTimeString()}</span> 
+                                            <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded uppercase font-bold ${profile.lastSyncType === 'Auto' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                                                {profile.lastSyncType === 'Auto' ? 'Auto' : 'Manual'}
+                                            </span>
+                                        </span>
                                     ) : (
-                                        <span>Aguardando...</span>
+                                        <span>Aguardando execução...</span>
                                     )}
-                                    <span className="md:border-l md:border-slate-700 md:pl-4">Próxima: <span className="text-white font-mono">{nextSyncDate.toLocaleTimeString()}</span></span>
+                                    
+                                    <span className="md:border-l md:border-slate-700 md:pl-4" title="Próxima execução automática">
+                                        Próxima: <span className="text-white font-mono">{nextSyncDate.toLocaleTimeString()}</span>
+                                    </span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                         {/* Novo Card de Visitas */}
+                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 relative overflow-hidden group">
+                             <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-600/10 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                             <div className="flex items-start justify-between mb-4">
+                                <h3 className="text-slate-400 text-sm font-bold uppercase z-10">Acessos ao Portal</h3>
+                                <Activity size={24} className="text-indigo-400 z-10" />
+                             </div>
+                            <p className="text-3xl font-bold z-10 relative">{visitStats.toLocaleString('pt-BR')}</p>
+                            <p className="text-xs text-slate-500 mt-2 z-10 relative">Sessões totais</p>
+                        </div>
+
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                            <h3 className="text-slate-400 text-sm font-bold uppercase mb-4">Acessos Portal</h3>
-                            <p className="text-3xl font-bold">{visitStats.toLocaleString('pt-BR')}</p>
+                            <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Total Posts</h3>
+                            <p className="text-3xl font-bold">{posts.length}</p>
                         </div>
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                            <h3 className="text-slate-400 text-sm font-bold uppercase mb-4">YouTube Subs</h3>
+                            <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">YouTube Subs</h3>
                             <p className="text-3xl font-bold">{profile.platformStats?.youtubeFollowers?.toLocaleString() || '-'}</p>
                         </div>
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                             <h3 className="text-slate-400 text-sm font-bold uppercase mb-4">Instagram</h3>
+                             <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Instagram Followers</h3>
                              <p className="text-3xl font-bold">{profile.platformStats?.instagramFollowers?.toLocaleString() || '-'}</p>
-                        </div>
-                        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                             <h3 className="text-slate-400 text-sm font-bold uppercase mb-4">TikTok</h3>
-                             <p className="text-3xl font-bold">{profile.platformStats?.tiktokFollowers !== undefined ? profile.platformStats.tiktokFollowers.toLocaleString() : '-'}</p>
                         </div>
                     </div>
                     
                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                         <h3 className="text-xl font-bold mb-4">Sincronização Manual</h3>
+                         <h3 className="text-xl font-bold mb-4">Ações Rápidas</h3>
                          <button 
                             onClick={() => handleSync(false)}
                             disabled={isSyncing}
                             className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 disabled:opacity-50"
                          >
                             <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
-                            {isSyncing ? "Sincronizando..." : "Atualizar Todos os Dados Agora"}
+                            {isSyncing ? "Sincronizando..." : "Sincronizar Todas as Redes Manualmente"}
                          </button>
                     </div>
                 </div>
             )}
             
+            {/* Rest of the component (tabs for integrations, content, etc) remains unchanged in structure... */}
             {activeTab === 'integrations' && (
                 <div className="max-w-4xl space-y-8">
                      <h1 className="text-3xl font-bold">Integrações</h1>
                      
+                     {/* YouTube */}
                      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
                         <div className="flex items-center gap-3 mb-4 text-red-500">
                             <Youtube size={24} />
-                            <h2 className="text-xl font-bold text-white">YouTube API</h2>
+                            <h2 className="text-xl font-bold text-white">YouTube Data API</h2>
                         </div>
-                        <input 
-                            type="password" 
-                            value={youtubeApiKey}
-                            onChange={(e) => setYoutubeApiKey(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-red-500 focus:outline-none"
-                            placeholder="Chave da API do Google Cloud"
-                        />
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-1">API Key</label>
+                                <input 
+                                    type="password" 
+                                    value={youtubeApiKey}
+                                    onChange={(e) => setYoutubeApiKey(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-red-500 focus:outline-none"
+                                    placeholder="AIza..."
+                                />
+                            </div>
+                        </div>
                      </div>
 
+                     {/* TikTok */}
                      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
                         <div className="flex items-center gap-3 mb-4 text-teal-400">
                             <TikTokIcon className="w-6 h-6" />
                             <h2 className="text-xl font-bold text-white">TikTok for Developers</h2>
                         </div>
                         
+                        <div className="bg-slate-950 p-4 rounded-lg border border-slate-700 mb-6 text-sm text-slate-300 space-y-2">
+                           <div className="flex items-start gap-2">
+                              <AlertTriangle size={16} className="text-amber-400 mt-0.5 shrink-0" />
+                              <p><strong className="text-white">Importante:</strong> Você precisa da <strong>Client Key</strong> e <strong>Client Secret</strong>.</p>
+                           </div>
+                           <p className="pl-6 text-slate-400 text-xs">
+                              O número que aparece na lista de apps (ex: 7580...) é o <strong>App ID</strong>. Ele NÃO serve aqui.
+                              <br />
+                              Clique no nome do seu app (ex: <em>conn_mdados</em>) no portal para ver as chaves corretas (geralmente começam com letras, ex: <em>aw...</em>).
+                           </p>
+                           <a href="https://developers.tiktok.com/apps/" target="_blank" className="pl-6 text-teal-400 hover:underline flex items-center gap-1 text-xs">
+                              <ExternalLink size={12} /> Ir para TikTok Apps
+                           </a>
+                           {/* Hint for reconnect */}
+                           <div className="flex items-start gap-2 pt-2 border-t border-slate-800 mt-2">
+                              <TrendingUp size={16} className="text-teal-400 mt-0.5 shrink-0" />
+                              <p>Se os seguidores não aparecerem, clique em <strong>Reconectar</strong> para autorizar a leitura de estatísticas (Scope: user.info.stats).</p>
+                           </div>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-4 mb-4">
                              <div>
-                                <label className="block text-sm text-slate-400 mb-1">Client Key</label>
+                                <label className="block text-sm text-slate-400 mb-1">Client Key (Não use o App ID numérico)</label>
                                 <input 
                                     type="text" 
                                     value={tiktokAuth.clientKey || ''}
                                     onChange={(e) => setTiktokAuth({ clientKey: e.target.value.trim() })}
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-teal-500 focus:outline-none"
+                                    className={`w-full bg-slate-950 border rounded-lg p-3 text-white focus:outline-none ${/^\d+$/.test(tiktokAuth.clientKey || '') && (tiktokAuth.clientKey || '').length > 10 ? 'border-red-500 focus:border-red-500' : 'border-slate-700 focus:border-teal-500'}`}
+                                    placeholder="Ex: aw4f52..."
                                 />
+                                {/^\d+$/.test(tiktokAuth.clientKey || '') && (tiktokAuth.clientKey || '').length > 10 && (
+                                   <p className="text-red-400 text-[10px] mt-1">Isso parece um App ID. Use a Client Key.</p>
+                                )}
                             </div>
                              <div>
                                 <label className="block text-sm text-slate-400 mb-1">Client Secret</label>
@@ -549,54 +609,127 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                         </div>
                         
+                        <div className="mb-4">
+                           <p className="text-xs text-slate-500 mb-1">Redirect URI (Configure no portal do TikTok):</p>
+                           <div className="bg-slate-950 border border-slate-800 rounded p-2 text-xs font-mono text-teal-400 break-all select-all">
+                              {getRedirectUri()}
+                           </div>
+                        </div>
+
                         <div className="flex items-center justify-between bg-slate-950 p-4 rounded-lg">
-                             <div className="flex items-center gap-4">
-                                <div className="text-sm">
-                                    <span className="text-slate-400">Status: </span>
-                                    {tiktokAuth.accessToken ? <span className="text-emerald-400 font-bold">Conectado</span> : <span className="text-slate-500">Desconectado</span>}
-                                </div>
-                                {tiktokAuth.accessToken && (
-                                    <button 
-                                        onClick={handleTestTikTok}
-                                        disabled={isConnecting}
-                                        className="text-xs bg-slate-800 hover:bg-slate-700 text-teal-400 border border-teal-900/50 px-3 py-1.5 rounded-md flex items-center gap-1"
-                                    >
-                                        <Zap size={14} /> Testar Conexão
-                                    </button>
+                             <div className="text-sm">
+                                <span className="text-slate-400">Status: </span>
+                                {tiktokAuth.accessToken ? (
+                                    <span className="text-emerald-400 font-bold">Conectado</span>
+                                ) : (
+                                    <span className="text-slate-500">Desconectado</span>
                                 )}
                              </div>
-                             <button onClick={startTikTokAuth} className="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2 rounded-lg text-sm font-bold">
-                                {tiktokAuth.accessToken ? "Reconectar TikTok" : "Conectar TikTok"}
+                             <button 
+                                onClick={startTikTokAuth}
+                                className="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2 rounded-lg text-sm font-bold"
+                             >
+                                {tiktokAuth.accessToken ? "Reconectar TikTok (Pop-up)" : "Conectar TikTok (Pop-up)"}
                              </button>
                         </div>
                      </div>
 
+                     {/* Meta */}
                      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
                         <div className="flex items-center gap-3 mb-4 text-blue-500">
                             <Facebook size={24} />
                             <Instagram size={24} className="text-fuchsia-500" />
                             <h2 className="text-xl font-bold text-white">Meta (Facebook & Instagram)</h2>
                         </div>
+
+                        {/* Info about Token Expiry */}
+                        <div className="bg-blue-500/10 border border-blue-500/20 text-blue-200 p-3 rounded-lg mb-4 text-sm flex gap-3">
+                           <Clock size={20} className="shrink-0 text-blue-400 mt-1"/>
+                           <div>
+                              <p className="font-bold text-white mb-1">Evite reconexões diárias!</p>
+                              <p className="opacity-80">
+                                 Para ativar a <strong>renovação automática (Token de 60 dias)</strong>, 
+                                 você precisa preencher o <strong>App Secret</strong> abaixo antes de conectar.
+                                 Sem isso, a conexão expira em 1-2 horas.
+                              </p>
+                           </div>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-4 mb-4">
                              <div>
                                  <label className="block text-sm text-slate-400 mb-1">App ID</label>
-                                 <input type="text" value={metaAuth.appId || ''} onChange={(e) => setMetaAuth({ appId: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none" />
+                                 <input 
+                                    type="text" 
+                                    value={metaAuth.appId || ''}
+                                    onChange={(e) => setMetaAuth({ appId: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none"
+                                />
                             </div>
                             <div>
                                  <label className="block text-sm text-slate-400 mb-1">App Secret</label>
-                                 <input type="password" value={metaAuth.appSecret || ''} onChange={(e) => setMetaAuth({ appSecret: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none" />
+                                 <input 
+                                    type="password" 
+                                    value={metaAuth.appSecret || ''}
+                                    onChange={(e) => setMetaAuth({ appSecret: e.target.value })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none"
+                                    placeholder="Opcional mas recomendado"
+                                />
                             </div>
                         </div>
+                        
+                        {/* Meta Actions Row */}
                         <div className="flex items-center justify-between bg-slate-950 p-4 rounded-lg">
-                             <div className="flex items-center gap-4 text-sm">
-                                <div><span className="text-slate-400">Status: </span>{metaAuth.accessToken ? <span className="text-emerald-400 font-bold">Conectado</span> : <span className="text-slate-500">Desconectado</span>}</div>
-                                {metaAuth.accessToken && <button onClick={handleDebugMeta} className="text-xs text-blue-400 hover:underline">Diagnosticar</button>}
+                             <div className="text-sm">
+                                <span className="text-slate-400">Status: </span>
+                                {metaAuth.accessToken ? (
+                                    <span className="text-emerald-400 font-bold">Conectado</span>
+                                ) : (
+                                    <span className="text-slate-500">Desconectado</span>
+                                )}
+                                {metaAuth.expiresAt && metaAuth.expiresAt > Date.now() && (
+                                    <span className="block text-xs text-slate-500 mt-1">
+                                        Expira em: {new Date(metaAuth.expiresAt).toLocaleDateString()}
+                                    </span>
+                                )}
                              </div>
+                             
                              <div className="flex gap-2">
-                                 <button onClick={handleResetMeta} className="bg-amber-900/30 hover:bg-amber-900/50 text-amber-500 border border-amber-900/50 px-3 py-2 rounded-lg text-xs font-bold">Reset FB</button>
-                                 <button onClick={() => startMetaAuth(false)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                                 {/* Debug Button */}
+                                 {metaAuth.accessToken && (
+                                     <button 
+                                        onClick={handleDebugMeta}
+                                        className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-lg text-xs font-bold border border-slate-700 flex items-center gap-1"
+                                        title="Diagnosticar"
+                                     >
+                                        <Zap size={14} /> Diag
+                                     </button>
+                                 )}
+                                 
+                                 {/* Reset Manual Button (New) */}
+                                 <button 
+                                    onClick={handleResetMeta}
+                                    className="bg-amber-900/30 hover:bg-amber-900/50 text-amber-500 border border-amber-900/50 px-3 py-2 rounded-lg text-xs font-bold"
+                                    title="Resetar Permissões no Facebook"
+                                 >
+                                    Resetar FB
+                                 </button>
+
+                                 {/* Re-Authorize (Force Permissions) */}
+                                 <button 
+                                    onClick={() => startMetaAuth(true)}
+                                    className="bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/50 px-3 py-2 rounded-lg text-xs font-bold"
+                                    title="Forçar pedido de permissões novamente"
+                                 >
+                                    Re-autorizar
+                                 </button>
+
+                                 {/* Main Connect */}
+                                 <button 
+                                    onClick={() => startMetaAuth(false)}
+                                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
+                                 >
                                     {isConnecting && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
-                                    {metaAuth.accessToken ? "Reconectar" : "Conectar"}
+                                    {metaAuth.accessToken ? "Reconectar" : "Conectar (Pop-up)"}
                                  </button>
                              </div>
                         </div>
@@ -637,17 +770,173 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="max-w-4xl space-y-8">
                     <h1 className="text-3xl font-bold">Páginas (CMS)</h1>
                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                        {/* SEO SECTION */}
                         <h2 className="text-xl font-bold mb-4 flex items-center gap-2 border-b border-slate-800 pb-2">
-                             <Globe size={20} className="text-emerald-400" /> SEO & Indexação
+                             <Globe size={20} className="text-emerald-400" /> SEO & Indexação Google
                         </h2>
+                        
+                        <div className="bg-slate-950 p-4 rounded-lg border border-slate-700 mb-6 text-sm">
+                           <div className="flex items-start gap-3 mb-2">
+                              <AlertTriangle size={20} className="text-amber-400 flex-shrink-0" />
+                              <div>
+                                 <h4 className="font-bold text-white">Como aparecer no Google?</h4>
+                                 <p className="text-slate-400 mt-1">
+                                    Para o Google achar seu site rápido, você precisa cadastrá-lo no <strong>Google Search Console</strong>.
+                                 </p>
+                                 <ol className="list-decimal list-inside mt-2 space-y-1 text-slate-300">
+                                    <li>Acesse o <a href="https://search.google.com/search-console" target="_blank" className="text-indigo-400 underline">Search Console</a>.</li>
+                                    <li>Adicione a propriedade: <code>https://portal.mundodosdadosbr.com</code></li>
+                                    <li>Escolha o método <strong>"Tag HTML"</strong>.</li>
+                                    <li>Copie o código que parece com: <code>&lt;meta name="google-site-verification" content="..." /&gt;</code></li>
+                                    <li>Ou copie apenas o código "content" e cole abaixo.</li>
+                                 </ol>
+                              </div>
+                           </div>
+                        </div>
+
                         <div className="space-y-4 mb-8">
                              <div>
-                                <label className="text-sm font-bold text-white mb-1 block">Google Search Console Tag</label>
-                                <input type="text" value={landingContent.googleVerificationId || ''} onChange={(e) => handleLandingChange('googleVerificationId', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-indigo-300 font-mono text-sm" />
+                                <label className="text-sm font-bold text-white mb-1 block">Código de Verificação do Google (HTML Tag)</label>
+                                <input 
+                                    type="text" 
+                                    value={landingContent.googleVerificationId || ''} 
+                                    onChange={(e) => handleLandingChange('googleVerificationId', e.target.value)} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-indigo-300 font-mono text-sm" 
+                                    placeholder='Ex: uL0... ou cole a tag <meta> inteira aqui'
+                                />
+                                <p className="text-xs text-slate-500 mt-1">Cole a tag inteira ou apenas o código hash. O sistema entende ambos.</p>
+                            </div>
+                             
+                             <div className="h-px bg-slate-800 my-6"></div>
+
+                             <div>
+                                <label className="text-sm text-slate-400">Título da Página (Meta Title)</label>
+                                <input 
+                                    type="text" 
+                                    value={landingContent.seoTitle || ''} 
+                                    onChange={(e) => handleLandingChange('seoTitle', e.target.value)} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" 
+                                    placeholder="Ex: Mundo dos Dados BR - Portal Oficial"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">Este é o texto que aparece na aba do navegador e nos resultados do Google.</p>
                             </div>
                              <div>
-                                <label className="text-sm text-slate-400">Meta Title</label>
-                                <input type="text" value={landingContent.seoTitle || ''} onChange={(e) => handleLandingChange('seoTitle', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                                <label className="text-sm text-slate-400">Descrição (Meta Description)</label>
+                                <textarea 
+                                    value={landingContent.seoDescription || ''} 
+                                    onChange={(e) => handleLandingChange('seoDescription', e.target.value)} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-20" 
+                                    placeholder="Resumo curto sobre o seu canal (máx 160 caracteres)"
+                                />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Palavras-chave (Keywords)</label>
+                                <input 
+                                    type="text" 
+                                    value={landingContent.seoKeywords || ''} 
+                                    onChange={(e) => handleLandingChange('seoKeywords', e.target.value)} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" 
+                                    placeholder="Ex: dados, python, power bi, tecnologia"
+                                />
+                            </div>
+                        </div>
+
+                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2 border-b border-slate-800 pb-2 pt-4">
+                             <LayoutDashboard size={20} className="text-indigo-400" /> Landing Page Visual
+                        </h2>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-sm text-slate-400">Título Principal (Headline)</label>
+                                <input type="text" value={landingContent.headline} onChange={(e) => handleLandingChange('headline', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Subtítulo</label>
+                                <textarea value={landingContent.subheadline} onChange={(e) => handleLandingChange('subheadline', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-20" />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Texto do Botão CTA</label>
+                                <input type="text" value={landingContent.ctaButtonText} onChange={(e) => handleLandingChange('ctaButtonText', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-sm text-slate-400">Logo Principal URL</label>
+                                    <input type="text" value={landingContent.logoUrl || ''} onChange={(e) => handleLandingChange('logoUrl', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                                </div>
+                                <div>
+                                    <label className="text-sm text-slate-400">URL do Bucket de Logos (Cloud Storage)</label>
+                                    <input type="text" value={landingContent.logoBucketUrl || ''} onChange={(e) => handleLandingChange('logoBucketUrl', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" placeholder="https://storage.googleapis.com/..." />
+                                </div>
+                            </div>
+                            
+                            {/* Bucket Help Text */}
+                            <div className="bg-slate-950 p-3 rounded border border-slate-800 text-xs text-slate-400">
+                                <p className="font-bold text-white mb-2">Arquivos Esperados no Bucket (PNG):</p>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 font-mono text-emerald-500">
+                                   <span>aws.png</span>
+                                   <span>azure.png</span>
+                                   <span>google-cloud.png</span>
+                                   <span>databricks.png</span>
+                                   <span>snowflake.png</span>
+                                   <span>bigquery.png</span>
+                                   <span>python.png</span>
+                                   <span>power-bi.png</span>
+                                   <span>sql-server.png</span>
+                                   <span>apache-spark.png</span>
+                                   <span>hadoop.png</span>
+                                   <span>excel.png</span>
+                                </div>
+                            </div>
+
+                            <div className="pt-6 border-t border-slate-800">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="font-semibold text-white">Seções de Recursos</h3>
+                                    <button onClick={handleAddFeature} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded flex items-center gap-1"><Plus size={14} /> Adicionar</button>
+                                </div>
+                                <div className="space-y-4">
+                                    {landingContent.features && landingContent.features.map((feature) => (
+                                    <div key={feature.id} className="bg-slate-950 border border-slate-700 rounded-lg p-4 relative group">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <div className="flex-grow mr-4 space-y-2">
+                                                <input type="text" value={feature.title} onChange={(e) => handleUpdateFeature(feature.id, 'title', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white" placeholder="Título" />
+                                                <textarea value={feature.description} onChange={(e) => handleUpdateFeature(feature.id, 'description', e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-white h-16" placeholder="Descrição curta" />
+                                                
+                                                {/* Markdown Content Editor */}
+                                                <div>
+                                                    <label className="text-xs text-slate-500 mb-1 block">Conteúdo Detalhado (Modal)</label>
+                                                    <textarea 
+                                                        value={feature.markdownContent || ''} 
+                                                        onChange={(e) => handleUpdateFeature(feature.id, 'markdownContent', e.target.value)} 
+                                                        className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-indigo-200 h-24 font-mono" 
+                                                        placeholder="Use Markdown aqui: # Título, **Negrito**, - Lista, [Link](url)" 
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-center gap-2">
+                                                 <label className="text-xs text-slate-500 mb-1">Ícone</label>
+                                                 <div className="relative w-10 h-10 bg-slate-800 border border-slate-700 rounded-lg flex items-center justify-center hover:border-indigo-500 transition-colors cursor-pointer overflow-hidden group/icon">
+                                                    {(() => {
+                                                        const IconComponent = AvailableIcons[feature.icon] || AvailableIcons['TrendingUp'];
+                                                        return <IconComponent size={20} className="text-indigo-400" />;
+                                                    })()}
+                                                    <select
+                                                        value={feature.icon}
+                                                        onChange={(e) => handleUpdateFeature(feature.id, 'icon', e.target.value)}
+                                                        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                                                        title="Selecione um ícone"
+                                                    >
+                                                        {Object.keys(AvailableIcons).map((iconKey) => (
+                                                            <option key={iconKey} value={iconKey}>
+                                                                {iconKey}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                 </div>
+                                                 <button onClick={() => handleRemoveFeature(feature.id)} className="text-slate-600 hover:text-red-400 bg-slate-900 p-2 rounded mt-2"><Trash2 size={16} /></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                         <div className="mt-6 flex justify-end">
@@ -657,31 +946,72 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
             )}
             
+            {/* Rest of the component code (posts, chatbot, files) remains the same ... */}
             {activeTab === 'posts' && (
                 <div className="space-y-6">
                      <div className="flex justify-between items-center">
-                        <h1 className="text-3xl font-bold">Posts ({posts.length})</h1>
-                        <button onClick={() => dbActions.clearPosts()} className="text-red-400 hover:text-red-300 text-sm flex items-center gap-2"><Trash2 size={16} /> Limpar Tudo</button>
+                        <h1 className="text-3xl font-bold">Gerenciar Posts</h1>
+                        <button 
+                            onClick={() => dbActions.clearPosts()}
+                            className="text-red-400 hover:text-red-300 text-sm flex items-center gap-2"
+                        >
+                            <Trash2 size={16} /> Limpar Tudo
+                        </button>
                      </div>
+
                      <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-slate-950 text-slate-400 text-sm border-b border-slate-800">
                                     <th className="p-4">Plataforma</th>
                                     <th className="p-4">Conteúdo</th>
+                                    <th className="p-4">Stats</th>
                                     <th className="p-4 text-right">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {posts.map(post => (
                                     <tr key={post.id} className="border-b border-slate-800 hover:bg-slate-800/50">
-                                        <td className="p-4"><span className="text-xs font-bold uppercase">{post.platform}</span></td>
-                                        <td className="p-4 truncate max-w-xs">{post.title || post.caption}</td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                                post.platform === Platform.YOUTUBE ? 'bg-red-500/20 text-red-400' :
+                                                post.platform === Platform.TIKTOK ? 'bg-teal-500/20 text-teal-400' :
+                                                post.platform === Platform.INSTAGRAM ? 'bg-fuchsia-500/20 text-fuchsia-400' :
+                                                'bg-blue-500/20 text-blue-400'
+                                            }`}>
+                                                {post.platform}
+                                            </span>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-3">
+                                                <img src={post.thumbnailUrl} className="w-10 h-10 rounded object-cover" alt="" />
+                                                <div className="max-w-md truncate text-sm">
+                                                    <div className="font-medium text-white truncate">{post.title || 'Sem título'}</div>
+                                                    <div className="text-slate-500 truncate">{post.caption}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-sm text-slate-400">
+                                            <div>Likes: {post.likes}</div>
+                                            <div>Views: {post.views}</div>
+                                        </td>
                                         <td className="p-4 text-right">
-                                            <button onClick={() => dbActions.deletePost(post.id)} className="p-2 text-slate-500 hover:text-red-400"><Trash2 size={18} /></button>
+                                            <button 
+                                                onClick={() => dbActions.deletePost(post.id)}
+                                                className="p-2 text-slate-500 hover:text-red-400 transition-colors"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}
+                                {posts.length === 0 && (
+                                    <tr>
+                                        <td colSpan={4} className="p-8 text-center text-slate-500">
+                                            Nenhum post encontrado. Sincronize suas redes.
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                      </div>
@@ -690,18 +1020,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {activeTab === 'chatbot' && (
                 <div className="max-w-3xl mx-auto space-y-8">
-                     <h1 className="text-3xl font-bold">Chatbot IA</h1>
+                     <h1 className="text-3xl font-bold">Configuração do Chatbot (IA)</h1>
                      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
                          <div className="space-y-4">
+                            <div className="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    checked={landingContent.chatbotConfig?.enabled ?? true} 
+                                    onChange={(e) => {
+                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
+                                        setLandingContent({ 
+                                            ...landingContent, 
+                                            chatbotConfig: { ...cfg, enabled: e.target.checked }
+                                        });
+                                    }}
+                                    className="w-5 h-5 rounded border-slate-700 bg-slate-950"
+                                />
+                                <span className="text-white">Ativar Chatbot</span>
+                            </div>
                             <div>
-                                <label className="text-sm text-slate-400">Base de Conhecimento</label>
+                                <label className="text-sm text-slate-400">Mensagem de Boas-vindas</label>
+                                <input 
+                                    type="text" 
+                                    value={landingContent.chatbotConfig?.welcomeMessage || ''} 
+                                    onChange={(e) => {
+                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
+                                        setLandingContent({ 
+                                            ...landingContent, 
+                                            chatbotConfig: { ...cfg, welcomeMessage: e.target.value }
+                                        });
+                                    }} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" 
+                                />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Base de Conhecimento (Contexto para IA)</label>
                                 <textarea 
                                     value={landingContent.chatbotConfig?.knowledgeBase || ''} 
                                     onChange={(e) => {
                                         const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
-                                        setLandingContent({ ...landingContent, chatbotConfig: { ...cfg, knowledgeBase: e.target.value } });
+                                        setLandingContent({ 
+                                            ...landingContent, 
+                                            chatbotConfig: { ...cfg, knowledgeBase: e.target.value }
+                                        });
                                     }} 
                                     className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-64 font-mono text-sm" 
+                                    placeholder="Cole aqui informações sobre seu canal, links importantes, biografia, etc."
                                 />
                             </div>
                             <div className="flex justify-end pt-4">
@@ -714,13 +1078,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {activeTab === 'files' && (
                 <div className="space-y-6">
-                    <h1 className="text-3xl font-bold">Arquivos Virtuais</h1>
+                    <h1 className="text-3xl font-bold">Arquivos & DNS</h1>
+                    
+                    {/* CRITICAL WARNING FOR SPA BOT ISSUES */}
+                    <div className="bg-amber-500/10 border border-amber-500/30 text-amber-200 p-4 rounded-xl flex items-start gap-3">
+                        <AlertTriangle size={24} className="text-amber-500 mt-1 flex-shrink-0" />
+                        <div>
+                            <h3 className="font-bold text-amber-400">Atenção: Verificação em Single Page Apps (SPA)</h3>
+                            <p className="text-sm mt-1 text-amber-200/80 leading-relaxed">
+                                Bots de verificação (como os do TikTok e Google) muitas vezes <strong>não executam JavaScript</strong>. 
+                                Como este portal é um SPA (React), eles podem ver apenas uma tela branca em vez do seu arquivo de texto.
+                            </p>
+                            <p className="text-sm mt-2 font-bold text-white">
+                                Se a verificação por arquivo falhar, use o método de <span className="text-emerald-400 underline decoration-emerald-500">Registro DNS TXT</span> no seu provedor de domínio. É garantido e funciona instantaneamente.
+                            </p>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-6 h-fit">
+                            <h3 className="font-bold text-white mb-4 flex items-center gap-2"><UploadCloud size={20} /> Adicionar Arquivo Virtual</h3>
                             <form onSubmit={handleSaveFile} className="space-y-4">
                                 <div>
-                                    <label className="text-xs text-slate-400">Path</label>
+                                    <label className="text-xs text-slate-400">Path (Nome do arquivo)</label>
                                     <input type="text" value={newFile.path} onChange={(e) => setNewFile({...newFile, path: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" placeholder="ex: tiktok_verify.txt" required />
+                                    <p className="text-[10px] text-slate-500 mt-1">Digite apenas o nome do arquivo, não a URL completa.</p>
                                 </div>
                                 <div>
                                     <label className="text-xs text-slate-400">Conteúdo</label>
@@ -730,11 +1112,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </form>
                         </div>
                         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden h-fit">
+                            <div className="p-4 border-b border-slate-800 bg-slate-800/30"><h3 className="font-bold text-white">Arquivos Hospedados</h3></div>
                             <div className="divide-y divide-slate-800">
                                 {virtualFiles.map((file, idx) => (
-                                <div key={idx} className="p-4 flex items-start justify-between">
-                                    <div><span className="font-mono text-white">/{file.path}</span></div>
-                                    <button onClick={() => handleDeleteFile(file.path)} className="text-slate-500 hover:text-red-400"><Trash2 size={18} /></button>
+                                <div key={idx} className="p-4 flex items-start justify-between hover:bg-slate-800/30 transition-colors">
+                                    <div className="overflow-hidden mr-4">
+                                        <div className="flex items-center gap-2 mb-1"><FileText size={16} /><span className="font-mono font-bold text-white truncate">/{file.path}</span></div>
+                                        <a href={`/${file.path}`} target="_blank" className="text-xs text-indigo-400 hover:underline flex items-center gap-1"><Globe size={10} /> Testar Link</a>
+                                    </div>
+                                    <button onClick={() => handleDeleteFile(file.path)} className="text-slate-500 hover:text-red-400 p-2"><Trash2 size={18} /></button>
                                 </div>
                                 ))}
                             </div>
