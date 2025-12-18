@@ -276,11 +276,16 @@ export const bulkSavePosts = async (newPosts: SocialPost[]) => {
 
   try {
     const batch = db.batch();
-    // Para garantir que os dados atualizados sobrescrevam os antigos perfeitamente
+    // 1. Limpa os posts existentes no banco para evitar dados "presos"
+    const snapshot = await db.collection('posts').get();
+    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+
+    // 2. Insere os novos posts atualizados
     newPosts.forEach(post => {
       const ref = db.collection('posts').doc(post.id);
-      batch.set(ref, post, { merge: false }); // merge false garante sobrescrita completa
+      batch.set(ref, post); 
     });
+    
     await batch.commit();
   } catch (e: any) {
     if (e.code === 'permission-denied') {
