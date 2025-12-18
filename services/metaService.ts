@@ -17,7 +17,6 @@ export const getMetaRedirectUri = () => {
  */
 export const getMetaAuthUrl = (appId: string, forceRerequest: boolean = false) => {
   const redirectUri = getMetaRedirectUri();
-  // Permissões essenciais para ler insights de mídia
   const scope = 'public_profile,pages_show_list,pages_read_engagement,instagram_basic,instagram_manage_insights';
   const state = 'meta_auth_state'; 
 
@@ -141,7 +140,7 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
 
     const igUserId = igPage.instagram_business_account.id;
 
-    // Métricas: play_count (público), plays (insight real), reach (alcance único)
+    // Campos essenciais para Reels e Posts de Imagem
     const fields = [
         'id',
         'caption',
@@ -155,10 +154,10 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
         'comments_count',
         'video_views',
         'play_count',
-        'insights.metric(plays,reach,impressions,total_interactions)'
+        'insights.metric(plays,reach,impressions)'
     ].join(',');
 
-    const mediaUrl = `${GRAPH_API_URL}/${igUserId}/media?fields=${fields}&limit=50&access_token=${accessToken}`;
+    const mediaUrl = `${GRAPH_API_URL}/${igUserId}/media?fields=${fields}&limit=30&access_token=${accessToken}`;
     
     const response = await fetch(mediaUrl);
     const data = await response.json();
@@ -173,39 +172,28 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
           thumbnailUrl = item.media_url || item.thumbnail_url;
       }
 
-      // 1. LÓGICA DE VISUALIZAÇÕES
-      // Ordem de preferência: plays (insight) > play_count > reach (para imagens)
+      // 1. EXTRAÇÃO DE VIEWS (ORDEM DE PREFERÊNCIA PARA REELS)
+      // O campo play_count é o valor público do Reels.
       let views = Number(item.play_count) || Number(item.video_views) || 0;
       
+      // Se play_count for 0 ou nulo, tentamos o insight de 'plays' (lifetime)
       if (item.insights && item.insights.data) {
           const playsMetric = item.insights.data.find((m: any) => m.name === 'plays');
           const reachMetric = item.insights.data.find((m: any) => m.name === 'reach');
 
           if (playsMetric?.values?.[0]) {
-              // Plays do insight é o número que geralmente bate com o que o usuário vê no app do IG
+              // Plays do insight costuma ser o mais preciso para Reels
               views = Math.max(views, Number(playsMetric.values[0].value));
-          } else if (reachMetric?.values?.[0]) {
-              // Para imagens, usamos o Alcance como métrica de visibilidade
-              views = Math.max(views, Number(reachMetric.values[0].value));
+          } else if (views === 0 && reachMetric?.values?.[0]) {
+              // Para imagens, o Reach é o nosso substituto de visualizações
+              views = Number(reachMetric.values[0].value);
           }
       }
 
-      // 2. LÓGICA DE CURTIDAS
-      let likes = Number(item.like_count) || 0;
+      // 2. EXTRAÇÃO DE LIKES
+      // like_count é o campo padrão. Em contas business, ele retorna o total.
+      const likes = Number(item.like_count) || 0;
       const comments = Number(item.comments_count) || 0;
-
-      // Fallback: Se likes vierem zerados ou muito baixos (ex: post oculto via API), 
-      // tentamos usar total_interactions - comments
-      if (item.insights && item.insights.data) {
-          const intMetric = item.insights.data.find((m: any) => m.name === 'total_interactions');
-          if (intMetric?.values?.[0]) {
-              const totalInt = Number(intMetric.values[0].value);
-              if (totalInt > (likes + comments)) {
-                  // Estimativa conservadora baseada nas interações totais do insight
-                  likes = Math.max(likes, totalInt - comments);
-              }
-          }
-      }
 
       return {
         id: item.id,

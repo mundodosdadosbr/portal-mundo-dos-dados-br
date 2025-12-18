@@ -5,7 +5,7 @@ import {
   Instagram, Facebook, Trash2, Plus, Eye, Link2, TikTokIcon,
   TrendingUp, CloudLightning, Users, Bot, FileText, UploadCloud,
   X, CheckCircle, Lock, Zap, MessageSquare, BookOpen, Video, Clock,
-  AvailableIcons, AlertTriangle, Globe, ExternalLink, Database, Activity, Heart
+  AvailableIcons, AlertTriangle, Globe, ExternalLink, Database, Activity
 } from './Icons';
 import { 
   SocialPost, CreatorProfile, LandingPageContent, Platform, 
@@ -73,9 +73,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   
   const [visitStats, setVisitStats] = useState(0);
 
-  // Sync Preview State
-  const [syncPreview, setSyncPreview] = useState<SocialPost[] | null>(null);
-
   // File System State
   const [virtualFiles, setVirtualFiles] = useState<VirtualFile[]>([]);
   const [newFile, setNewFile] = useState({ path: '', content: '' });
@@ -108,10 +105,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               refreshToken: tokens.refreshToken,
               expiresAt: Date.now() + (tokens.expiresIn * 1000)
             });
-            alert("TikTok conectado com sucesso!");
+            alert("TikTok conectado com sucesso via Pop-up!");
          } catch (e: any) {
             console.error(e);
-            alert(`Erro TikTok: ${e.message}`);
+            alert(`Erro ao conectar TikTok: ${e.message}`);
          } finally {
             setIsConnecting(false);
          }
@@ -134,9 +131,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const longData = await exchangeForLongLivedToken(shortLivedToken, metaAuth.appId, metaAuth.appSecret);
                       finalToken = longData.accessToken;
                       finalExpiry = Date.now() + (longData.expiresIn * 1000);
-                      alert("Meta: Token de longa duração gerado!");
+                      alert("Meta: Token de longa duração (60 dias) gerado com sucesso!");
                   } catch (upgradeErr: any) {
-                      console.warn("Aviso: Token de curta duração ativo.");
+                      console.error("Erro ao gerar token longa duração:", upgradeErr);
+                      alert("Aviso: Conectado com token de curta duração.");
                   } finally {
                       setIsConnecting(false);
                   }
@@ -166,55 +164,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setLandingContent({ ...landingContent, [field]: value });
   };
 
-  // --- AUTH HELPERS FIX ---
-  
-  // Implemented missing handleTestTikTok
-  const handleTestTikTok = async () => {
-    if (!tiktokAuth.accessToken) return;
-    try {
-      const stats = await getTikTokUserStats(
-        tiktokAuth.accessToken, 
-        tiktokAuth.refreshToken, 
-        tiktokAuth.clientKey || DEFAULT_CLIENT_KEY, 
-        tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET, 
-        tiktokAuth.expiresAt,
-        (acc, ref, exp) => setTiktokAuth({ accessToken: acc, refreshToken: ref, expiresAt: exp })
-      );
-      alert(`TikTok Diagnóstico: @${stats.displayName || 'n/a'} - ${stats.followers} seguidores. ${stats.error ? 'Erro: ' + stats.error : 'Sucesso!'}`);
-    } catch (e: any) {
-      alert(`Erro no diagnóstico: ${e.message}`);
-    }
+  // --- CMS FEATURES LOGIC ---
+  const handleAddFeature = () => {
+    const newFeature: FeatureItem = { 
+        id: Date.now().toString(), 
+        title: 'Nova Seção', 
+        description: 'Descrição do recurso...', 
+        icon: 'Star',
+        markdownContent: ''
+    };
+    const currentFeatures = landingContent.features || [];
+    setLandingContent({ ...landingContent, features: [...currentFeatures, newFeature] });
   };
 
-  // Implemented missing startTikTokAuth
-  const startTikTokAuth = () => {
-    const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
-    const url = getTikTokAuthUrl(key);
-    window.open(url, 'tiktok_auth', 'width=600,height=800');
+  const handleRemoveFeature = (id: string) => {
+    const currentFeatures = landingContent.features || [];
+    setLandingContent({ ...landingContent, features: currentFeatures.filter(f => f.id !== id) });
   };
 
-  // Implemented missing startMetaAuth
-  const startMetaAuth = (force: boolean) => {
-    if (!metaAuth.appId) {
-      alert("Informe o App ID primeiro.");
-      return;
-    }
-    const url = getMetaAuthUrl(metaAuth.appId, force);
-    window.open(url, 'meta_auth', 'width=600,height=800');
-  };
-
-  // Implemented missing handleDebugMeta
-  const handleDebugMeta = async () => {
-    if (!metaAuth.accessToken) return;
-    const logs = await debugMetaConnection(metaAuth.accessToken);
-    alert(logs.join('\n'));
+  const handleUpdateFeature = (id: string, field: keyof FeatureItem, value: string) => {
+    const currentFeatures = landingContent.features || [];
+    setLandingContent({ 
+        ...landingContent, 
+        features: currentFeatures.map(f => f.id === id ? { ...f, [field]: value } : f) 
+    });
   };
 
   // --- SYNC LOGIC ---
   const handleSync = async (isAuto = false) => {
     if (isSyncing) return;
     setIsSyncing(true);
-    setSyncPreview(null);
     
     const newStats = {
       youtubeFollowers: profile.platformStats?.youtubeFollowers || 0,
@@ -224,94 +203,209 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
 
     const updateTokenCallback = (newAccess: string, newRefresh: string, newExpiry: number) => {
-        setTiktokAuth({ accessToken: newAccess, refreshToken: newRefresh, expiresAt: newExpiry });
+        setTiktokAuth({
+            accessToken: newAccess,
+            refreshToken: newRefresh,
+            expiresAt: newExpiry
+        });
     };
 
     try {
+      // 1. YouTube
       let realYoutubePosts: SocialPost[] = [];
       if (youtubeApiKey) {
          try {
-            realYoutubePosts = await getYouTubePosts('@MundodosDadosBR', 15, youtubeApiKey);
+            realYoutubePosts = await getYouTubePosts('@MundodosDadosBR', 10, youtubeApiKey);
             const channelStats = await getYouTubeChannelStatistics('@MundodosDadosBR', youtubeApiKey);
-            if (channelStats) {
-                const numStr = channelStats.subscriberCount.replace(/[^0-9.]/g, '');
-                const num = parseFloat(numStr) * (channelStats.subscriberCount.includes('K') ? 1000 : channelStats.subscriberCount.includes('M') ? 1000000 : 1);
+            if (channelStats && channelStats.subscriberCount) {
+                const rawStr = channelStats.subscriberCount;
+                let num = parseFloat(rawStr.replace(/[^0-9.]/g, ''));
+                if (rawStr.toUpperCase().includes('K')) num *= 1000;
+                else if (rawStr.toUpperCase().includes('M')) num *= 1000000;
                 newStats.youtubeFollowers = num;
             }
          } catch (e) {}
       }
 
+      // 2. TikTok
       let tiktokPosts: SocialPost[] = [];
       if (tiktokAuth.accessToken) {
          try {
-             const ttStats = await getTikTokUserStats(tiktokAuth.accessToken, tiktokAuth.refreshToken, tiktokAuth.clientKey || DEFAULT_CLIENT_KEY, tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET, tiktokAuth.expiresAt, updateTokenCallback);
-             if (ttStats.followers) newStats.tiktokFollowers = ttStats.followers;
-             tiktokPosts = await getTikTokPosts('@mundo.dos.dados5', tiktokAuth.accessToken, tiktokAuth.refreshToken, tiktokAuth.clientKey || DEFAULT_CLIENT_KEY, tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET, tiktokAuth.expiresAt, updateTokenCallback);
+             const ttStats = await getTikTokUserStats(
+                 tiktokAuth.accessToken,
+                 tiktokAuth.refreshToken,
+                 tiktokAuth.clientKey || DEFAULT_CLIENT_KEY,
+                 tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
+                 tiktokAuth.expiresAt,
+                 updateTokenCallback
+             );
+             if (ttStats.followers !== undefined) {
+                 newStats.tiktokFollowers = ttStats.followers;
+             }
+             
+             tiktokPosts = await getTikTokPosts(
+                '@mundo.dos.dados5', 
+                tiktokAuth.accessToken,
+                tiktokAuth.refreshToken,
+                tiktokAuth.clientKey || DEFAULT_CLIENT_KEY,
+                tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
+                tiktokAuth.expiresAt,
+                updateTokenCallback
+             );
          } catch (ttErr) {}
       }
 
+      // 3. Meta
       let igPosts: SocialPost[] = [];
       let fbPosts: SocialPost[] = [];
       if (metaAuth.accessToken) {
         try {
           const metaStats = await getMetaPlatformStats(metaAuth.accessToken);
-          newStats.instagramFollowers = metaStats.instagram;
-          newStats.facebookFollowers = metaStats.facebook;
+          if (metaStats.instagram > 0) newStats.instagramFollowers = metaStats.instagram;
+          if (metaStats.facebook > 0) newStats.facebookFollowers = metaStats.facebook;
+
           igPosts = await getInstagramPosts(metaAuth.accessToken);
           fbPosts = await getFacebookPosts(metaAuth.accessToken);
         } catch (metaError) {}
       }
 
+      // 4. Update Profile
+      const totalFollowers = 
+        (Number(newStats.youtubeFollowers) || 0) + 
+        (Number(newStats.instagramFollowers) || 0) + 
+        (Number(newStats.tiktokFollowers) || 0) + 
+        (Number(newStats.facebookFollowers) || 0);
+
+      const formatCount = (n: number) => {
+        return new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(n);
+      };
+
+      const now = new Date();
+      const updatedProfile: CreatorProfile = {
+        ...profile,
+        subscribers: formatCount(totalFollowers),
+        platformStats: newStats,
+        lastSyncTime: now.toISOString(),
+        lastSyncType: isAuto ? 'Auto' : 'Manual'
+      };
+      
+      setProfile(updatedProfile);
+
       const combinedPosts = [...realYoutubePosts, ...tiktokPosts, ...igPosts, ...fbPosts];
       
-      // Se for automático, já salva direto
-      if (isAuto) {
-         dbActions.syncPosts(combinedPosts);
-         // Fixed: Operator '+' cannot be applied to types 'unknown' and 'unknown' by casting values to number.
-         const total = Object.values(newStats).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
-         setProfile({ ...profile, subscribers: total > 1000 ? (total/1000).toFixed(1) + 'K' : total.toString(), platformStats: newStats, lastSyncTime: new Date().toISOString(), lastSyncType: 'Auto' });
+      if (dbActions) {
+        dbActions.syncPosts(combinedPosts);
+        if (!isAuto) {
+            alert(`Sincronização concluída!\nYouTube: ${realYoutubePosts.length}\nTikTok: ${tiktokPosts.length}\nInstagram: ${igPosts.length}\nFacebook: ${fbPosts.length}\n\nTotal de Seguidores: ${totalFollowers}`);
+        }
       } else {
-         // Se for manual, abre o preview para validação
-         setSyncPreview(combinedPosts);
-         setProfile({ ...profile, platformStats: newStats }); // Temporário para preview
+        setPosts(combinedPosts);
       }
 
     } catch (error: any) {
       console.error(error);
-      if (!isAuto) alert(`Erro: ${error.message}`);
+      if (!isAuto) alert(`Erro na sincronização: ${error.message}`);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  const confirmSync = () => {
-    if (!syncPreview) return;
-    dbActions.syncPosts(syncPreview);
-    
-    const stats = profile.platformStats || { youtubeFollowers: 0, instagramFollowers: 0, tiktokFollowers: 0, facebookFollowers: 0 };
-    // Fixed: Operator '+' cannot be applied to types 'unknown' and 'unknown' by casting values to number.
-    const total = Object.values(stats).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
-    
-    setProfile({ 
-        ...profile, 
-        subscribers: total >= 1000 ? (total/1000).toFixed(1) + 'K' : total.toString(),
-        lastSyncTime: new Date().toISOString(), 
-        lastSyncType: 'Manual' 
-    });
-    setSyncPreview(null);
-    alert("Sincronização confirmada e salva no banco de dados!");
-  };
-
   // --- AUTO SYNC (1 HOUR) ---
   const handleSyncRef = useRef(handleSync);
-  useEffect(() => { handleSyncRef.current = handleSync; }, [handleSync]);
   useEffect(() => {
-    const intervalId = setInterval(() => { if (handleSyncRef.current) handleSyncRef.current(true); }, 3600000);
+    handleSyncRef.current = handleSync;
+  }, [handleSync]);
+
+  useEffect(() => {
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const intervalId = setInterval(() => {
+        if (handleSyncRef.current) handleSyncRef.current(true);
+    }, ONE_HOUR_MS);
     return () => clearInterval(intervalId);
   }, []);
 
   const lastSyncDate = profile.lastSyncTime ? new Date(profile.lastSyncTime) : null;
-  const nextSyncDate = lastSyncDate ? new Date(lastSyncDate.getTime() + 3600000) : new Date(Date.now() + 3600000);
+  const nextSyncDate = lastSyncDate 
+    ? new Date(lastSyncDate.getTime() + 60 * 60 * 1000) 
+    : new Date(Date.now() + 60 * 60 * 1000);
+
+  // --- POPUP TRIGGERS ---
+  const startTikTokAuth = () => {
+     const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
+     if (!key.trim()) { alert("O campo Client Key está vazio."); return; }
+     const url = getTikTokAuthUrl(key.trim());
+     window.open(url, 'TikTok Auth', 'width=600,height=700,status=yes,scrollbars=yes');
+  };
+
+  const startMetaAuth = (forceRerequest = false) => {
+     const url = getMetaAuthUrl(metaAuth.appId || '1146266013233342', forceRerequest); 
+     window.open(url, 'Meta Auth', 'width=600,height=700,status=yes,scrollbars=yes');
+  };
+
+  const handleTestTikTok = async () => {
+      if (!tiktokAuth.accessToken) {
+          alert("TikTok não conectado. Conecte primeiro.");
+          return;
+      }
+      setIsConnecting(true);
+      try {
+          const stats = await getTikTokUserStats(
+              tiktokAuth.accessToken,
+              tiktokAuth.refreshToken,
+              tiktokAuth.clientKey || DEFAULT_CLIENT_KEY,
+              tiktokAuth.clientSecret || DEFAULT_CLIENT_SECRET,
+              tiktokAuth.expiresAt,
+              (newAccess, newRefresh, newExpiry) => {
+                setTiktokAuth({
+                    accessToken: newAccess,
+                    refreshToken: newRefresh,
+                    expiresAt: newExpiry
+                });
+              }
+          );
+          if (stats.error) {
+              alert(`Falha no Diagnóstico TikTok:\nErro: ${stats.error}\n\nVerifique se o token é válido ou tente Reconectar.`);
+          } else {
+              alert(`Diagnóstico TikTok OK!\nUsuário: ${stats.displayName}\nSeguidores: ${stats.followers}\n\nConexão está funcionando corretamente.`);
+          }
+      } catch (e: any) {
+          alert(`Erro inesperado no teste: ${e.message}`);
+      } finally {
+          setIsConnecting(false);
+      }
+  };
+
+  const handleResetMeta = () => {
+    if (confirm("Deseja abrir o guia de reset manual no Facebook?")) {
+        window.open('https://www.facebook.com/settings?tab=business_tools', '_blank');
+    }
+  };
+
+  const handleDebugMeta = async () => {
+    if (!metaAuth.accessToken) return;
+    const logs = await debugMetaConnection(metaAuth.accessToken);
+    const logString = logs.join('\n');
+    if (logString.includes("ALERTA CRÍTICO") || logString.includes("0 páginas")) {
+        if(confirm(`DIAGNÓSTICO:\n${logString}\n\nDetectado problema de permissão. Resetar?`)) handleResetMeta();
+    } else {
+        alert(`Relatório Meta\n\n${logString}`);
+    }
+  };
+
+  // --- FILE HANDLERS ---
+  const handleSaveFile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFile.path || !newFile.content) return;
+    await saveVirtualFile({ ...newFile, type: 'text/plain' });
+    const files = await getVirtualFilesCloud();
+    setVirtualFiles(files);
+    setNewFile({ path: '', content: '' });
+  };
+  const handleDeleteFile = async (path: string) => {
+    await deleteVirtualFile(path);
+    const files = await getVirtualFilesCloud();
+    setVirtualFiles(files);
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex">
@@ -359,78 +453,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="space-y-6">
                     <div className="flex justify-between items-center">
                         <h1 className="text-3xl font-bold">Visão Geral</h1>
-                        <div className="flex items-center gap-3 text-xs bg-slate-900 px-4 py-2 rounded-lg border border-slate-800">
-                            <Clock size={14} className="animate-pulse" />
-                            <span>Auto-Sync Ativo: Próximo em {nextSyncDate.toLocaleTimeString()}</span>
+                        <div className="flex flex-col md:flex-row items-end md:items-center gap-3">
+                             <div className="flex items-center gap-3 text-xs bg-slate-900 px-4 py-2 rounded-lg border border-slate-800 shadow-sm">
+                                <div className="flex items-center gap-2 text-emerald-400 font-bold border-r border-slate-700 pr-3">
+                                    <Clock size={14} className="animate-pulse" />
+                                    <span>Auto-Sync (1h)</span>
+                                </div>
+                                <div className="flex flex-col md:flex-row md:gap-4 text-slate-400">
+                                    {lastSyncDate ? (
+                                        <span>Última: <span className="text-white font-mono">{lastSyncDate.toLocaleTimeString()}</span> ({profile.lastSyncType})</span>
+                                    ) : (
+                                        <span>Aguardando...</span>
+                                    )}
+                                    <span className="md:border-l md:border-slate-700 md:pl-4">Próxima: <span className="text-white font-mono">{nextSyncDate.toLocaleTimeString()}</span></span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                            <h3 className="text-slate-400 text-sm font-bold mb-2">Visitas</h3>
-                            <p className="text-3xl font-bold">{visitStats.toLocaleString()}</p>
+                            <h3 className="text-slate-400 text-sm font-bold uppercase mb-4">Acessos Portal</h3>
+                            <p className="text-3xl font-bold">{visitStats.toLocaleString('pt-BR')}</p>
                         </div>
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                            <h3 className="text-slate-400 text-sm font-bold mb-2">YouTube</h3>
+                            <h3 className="text-slate-400 text-sm font-bold uppercase mb-4">YouTube Subs</h3>
                             <p className="text-3xl font-bold">{profile.platformStats?.youtubeFollowers?.toLocaleString() || '-'}</p>
                         </div>
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                             <h3 className="text-slate-400 text-sm font-bold mb-2">Instagram</h3>
+                             <h3 className="text-slate-400 text-sm font-bold uppercase mb-4">Instagram</h3>
                              <p className="text-3xl font-bold">{profile.platformStats?.instagramFollowers?.toLocaleString() || '-'}</p>
                         </div>
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                             <h3 className="text-slate-400 text-sm font-bold mb-2">TikTok</h3>
-                             <p className="text-3xl font-bold">{profile.platformStats?.tiktokFollowers?.toLocaleString() || '-'}</p>
+                             <h3 className="text-slate-400 text-sm font-bold uppercase mb-4">TikTok</h3>
+                             <p className="text-3xl font-bold">{profile.platformStats?.tiktokFollowers !== undefined ? profile.platformStats.tiktokFollowers.toLocaleString() : '-'}</p>
                         </div>
                     </div>
                     
-                    {syncPreview ? (
-                        <div className="bg-slate-900 p-6 rounded-xl border border-indigo-500/50 animate-fade-in shadow-xl shadow-indigo-500/10">
-                            <div className="flex justify-between items-center mb-6">
-                                <div>
-                                    <h3 className="text-xl font-bold text-white">Pré-visualização da Sincronização</h3>
-                                    <p className="text-sm text-slate-400">Valide os números antes de salvar permanentemente no portal.</p>
-                                </div>
-                                <div className="flex gap-3">
-                                    <button onClick={() => setSyncPreview(null)} className="px-4 py-2 text-slate-400 hover:text-white">Cancelar</button>
-                                    <button onClick={confirmSync} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold">Salvar Agora</button>
-                                </div>
-                            </div>
-                            
-                            <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-800">
-                                <table className="w-full text-left">
-                                    <thead className="bg-slate-950 sticky top-0">
-                                        <tr className="text-xs font-bold text-slate-500 uppercase">
-                                            <th className="p-3">Plataforma</th>
-                                            <th className="p-3">Mídia / Título</th>
-                                            <th className="p-3">Views</th>
-                                            <th className="p-3">Likes</th>
-                                            <th className="p-3">Data</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-800 text-sm">
-                                        {syncPreview.map((p, i) => (
-                                            <tr key={i} className="hover:bg-slate-800/30">
-                                                <td className="p-3"><span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-800">{p.platform}</span></td>
-                                                <td className="p-3 max-w-xs truncate">{p.title || p.caption}</td>
-                                                <td className="p-3 font-mono text-emerald-400 font-bold">{p.views?.toLocaleString()}</td>
-                                                <td className="p-3 font-mono text-rose-400 font-bold">{p.likes?.toLocaleString()}</td>
-                                                <td className="p-3 text-slate-500 text-xs">{new Date(p.date).toLocaleDateString()}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                             <h3 className="text-xl font-bold mb-4">Atualização Manual</h3>
-                             <button onClick={() => handleSync(false)} disabled={isSyncing} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 disabled:opacity-50">
-                                <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
-                                {isSyncing ? "Buscando dados das APIs..." : "Iniciar Sincronização"}
-                             </button>
-                        </div>
-                    )}
+                    <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                         <h3 className="text-xl font-bold mb-4">Sincronização Manual</h3>
+                         <button 
+                            onClick={() => handleSync(false)}
+                            disabled={isSyncing}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 disabled:opacity-50"
+                         >
+                            <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
+                            {isSyncing ? "Sincronizando..." : "Atualizar Todos os Dados Agora"}
+                         </button>
+                    </div>
                 </div>
             )}
             
@@ -443,7 +513,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <Youtube size={24} />
                             <h2 className="text-xl font-bold text-white">YouTube API</h2>
                         </div>
-                        <input type="password" value={youtubeApiKey} onChange={(e) => setYoutubeApiKey(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" placeholder="Chave da API do Google Cloud" />
+                        <input 
+                            type="password" 
+                            value={youtubeApiKey}
+                            onChange={(e) => setYoutubeApiKey(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-red-500 focus:outline-none"
+                            placeholder="Chave da API do Google Cloud"
+                        />
                      </div>
 
                      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
@@ -451,27 +527,65 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <TikTokIcon className="w-6 h-6" />
                             <h2 className="text-xl font-bold text-white">TikTok for Developers</h2>
                         </div>
+                        
                         <div className="grid grid-cols-2 gap-4 mb-4">
-                             <div><label className="text-xs text-slate-400">Client Key</label><input type="text" value={tiktokAuth.clientKey || ''} onChange={(e) => setTiktokAuth({ clientKey: e.target.value.trim() })} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" /></div>
-                             <div><label className="text-xs text-slate-400">Client Secret</label><input type="password" value={tiktokAuth.clientSecret || ''} onChange={(e) => setTiktokAuth({ clientSecret: e.target.value.trim() })} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" /></div>
+                             <div>
+                                <label className="block text-sm text-slate-400 mb-1">Client Key</label>
+                                <input 
+                                    type="text" 
+                                    value={tiktokAuth.clientKey || ''}
+                                    onChange={(e) => setTiktokAuth({ clientKey: e.target.value.trim() })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-teal-500 focus:outline-none"
+                                />
+                            </div>
+                             <div>
+                                <label className="block text-sm text-slate-400 mb-1">Client Secret</label>
+                                <input 
+                                    type="password" 
+                                    value={tiktokAuth.clientSecret || ''}
+                                    onChange={(e) => setTiktokAuth({ clientSecret: e.target.value.trim() })}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-teal-500 focus:outline-none"
+                                />
+                            </div>
                         </div>
+                        
                         <div className="flex items-center justify-between bg-slate-950 p-4 rounded-lg">
-                             <div className="flex items-center gap-4 text-sm">
-                                <div><span className="text-slate-400">Status: </span>{tiktokAuth.accessToken ? <span className="text-emerald-400 font-bold">Conectado</span> : <span className="text-slate-500">Desconectado</span>}</div>
-                                {tiktokAuth.accessToken && <button onClick={handleTestTikTok} className="text-xs text-teal-400 hover:underline">Diagnosticar</button>}
+                             <div className="flex items-center gap-4">
+                                <div className="text-sm">
+                                    <span className="text-slate-400">Status: </span>
+                                    {tiktokAuth.accessToken ? <span className="text-emerald-400 font-bold">Conectado</span> : <span className="text-slate-500">Desconectado</span>}
+                                </div>
+                                {tiktokAuth.accessToken && (
+                                    <button 
+                                        onClick={handleTestTikTok}
+                                        disabled={isConnecting}
+                                        className="text-xs bg-slate-800 hover:bg-slate-700 text-teal-400 border border-teal-900/50 px-3 py-1.5 rounded-md flex items-center gap-1"
+                                    >
+                                        <Zap size={14} /> Testar Conexão
+                                    </button>
+                                )}
                              </div>
-                             <button onClick={startTikTokAuth} className="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2 rounded-lg text-sm font-bold">Conectar TikTok</button>
+                             <button onClick={startTikTokAuth} className="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2 rounded-lg text-sm font-bold">
+                                {tiktokAuth.accessToken ? "Reconectar TikTok" : "Conectar TikTok"}
+                             </button>
                         </div>
                      </div>
 
                      <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
                         <div className="flex items-center gap-3 mb-4 text-blue-500">
-                            <Facebook size={24} /> <Instagram size={24} className="text-fuchsia-500" />
+                            <Facebook size={24} />
+                            <Instagram size={24} className="text-fuchsia-500" />
                             <h2 className="text-xl font-bold text-white">Meta (Facebook & Instagram)</h2>
                         </div>
                         <div className="grid grid-cols-2 gap-4 mb-4">
-                             <div><label className="text-xs text-slate-400">App ID</label><input type="text" value={metaAuth.appId || ''} onChange={(e) => setMetaAuth({ appId: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" /></div>
-                             <div><label className="text-xs text-slate-400">App Secret</label><input type="password" value={metaAuth.appSecret || ''} onChange={(e) => setMetaAuth({ appSecret: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" /></div>
+                             <div>
+                                 <label className="block text-sm text-slate-400 mb-1">App ID</label>
+                                 <input type="text" value={metaAuth.appId || ''} onChange={(e) => setMetaAuth({ appId: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none" />
+                            </div>
+                            <div>
+                                 <label className="block text-sm text-slate-400 mb-1">App Secret</label>
+                                 <input type="password" value={metaAuth.appSecret || ''} onChange={(e) => setMetaAuth({ appSecret: e.target.value })} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none" />
+                            </div>
                         </div>
                         <div className="flex items-center justify-between bg-slate-950 p-4 rounded-lg">
                              <div className="flex items-center gap-4 text-sm">
@@ -479,8 +593,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 {metaAuth.accessToken && <button onClick={handleDebugMeta} className="text-xs text-blue-400 hover:underline">Diagnosticar</button>}
                              </div>
                              <div className="flex gap-2">
-                                 <button onClick={() => startMetaAuth(true)} className="bg-amber-900/30 text-amber-500 border border-amber-900/50 px-3 py-2 rounded-lg text-xs font-bold">Resetar Permissões</button>
-                                 <button onClick={() => startMetaAuth(false)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold">Conectar Meta</button>
+                                 <button onClick={handleResetMeta} className="bg-amber-900/30 hover:bg-amber-900/50 text-amber-500 border border-amber-900/50 px-3 py-2 rounded-lg text-xs font-bold">Reset FB</button>
+                                 <button onClick={() => startMetaAuth(false)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                                    {isConnecting && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                                    {metaAuth.accessToken ? "Reconectar" : "Conectar"}
+                                 </button>
                              </div>
                         </div>
                      </div>
@@ -492,11 +609,136 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <h1 className="text-3xl font-bold">Perfil do Criador</h1>
                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div><label className="text-sm text-slate-400">Nome</label><input type="text" value={profile.name} onChange={(e) => handleProfileChange('name', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" /></div>
-                            <div><label className="text-sm text-slate-400">Handle</label><input type="text" value={profile.handle} onChange={(e) => handleProfileChange('handle', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" /></div>
-                            <div className="md:col-span-2"><label className="text-sm text-slate-400">Avatar URL</label><input type="text" value={profile.avatarUrl} onChange={(e) => handleProfileChange('avatarUrl', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" /></div>
+                            <div>
+                                <label className="text-sm text-slate-400">Nome de Exibição</label>
+                                <input type="text" value={profile.name} onChange={(e) => handleProfileChange('name', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Handle (@usuario)</label>
+                                <input type="text" value={profile.handle} onChange={(e) => handleProfileChange('handle', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            </div>
+                             <div className="md:col-span-2">
+                                <label className="text-sm text-slate-400">Avatar URL</label>
+                                <input type="text" value={profile.avatarUrl} onChange={(e) => handleProfileChange('avatarUrl', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="text-sm text-slate-400">Bio</label>
+                                <textarea value={profile.bio} onChange={(e) => handleProfileChange('bio', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-20" />
+                            </div>
                         </div>
-                        <div className="mt-4 flex justify-end"><button onClick={() => setProfile(profile)} className="bg-indigo-600 hover:bg-indigo-500 text-white py-2 px-6 rounded-lg flex items-center gap-2"><Save size={18} /> Salvar</button></div>
+                        <div className="mt-4 flex justify-end">
+                             <button onClick={() => setProfile(profile)} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2"><Save size={18} /> <span>Salvar Perfil</span></button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'pages' && (
+                <div className="max-w-4xl space-y-8">
+                    <h1 className="text-3xl font-bold">Páginas (CMS)</h1>
+                    <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2 border-b border-slate-800 pb-2">
+                             <Globe size={20} className="text-emerald-400" /> SEO & Indexação
+                        </h2>
+                        <div className="space-y-4 mb-8">
+                             <div>
+                                <label className="text-sm font-bold text-white mb-1 block">Google Search Console Tag</label>
+                                <input type="text" value={landingContent.googleVerificationId || ''} onChange={(e) => handleLandingChange('googleVerificationId', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-indigo-300 font-mono text-sm" />
+                            </div>
+                             <div>
+                                <label className="text-sm text-slate-400">Meta Title</label>
+                                <input type="text" value={landingContent.seoTitle || ''} onChange={(e) => handleLandingChange('seoTitle', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" />
+                            </div>
+                        </div>
+                        <div className="mt-6 flex justify-end">
+                             <button onClick={() => setLandingContent(landingContent)} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2"><Save size={18} /> <span>Salvar Página</span></button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {activeTab === 'posts' && (
+                <div className="space-y-6">
+                     <div className="flex justify-between items-center">
+                        <h1 className="text-3xl font-bold">Posts ({posts.length})</h1>
+                        <button onClick={() => dbActions.clearPosts()} className="text-red-400 hover:text-red-300 text-sm flex items-center gap-2"><Trash2 size={16} /> Limpar Tudo</button>
+                     </div>
+                     <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-slate-950 text-slate-400 text-sm border-b border-slate-800">
+                                    <th className="p-4">Plataforma</th>
+                                    <th className="p-4">Conteúdo</th>
+                                    <th className="p-4 text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {posts.map(post => (
+                                    <tr key={post.id} className="border-b border-slate-800 hover:bg-slate-800/50">
+                                        <td className="p-4"><span className="text-xs font-bold uppercase">{post.platform}</span></td>
+                                        <td className="p-4 truncate max-w-xs">{post.title || post.caption}</td>
+                                        <td className="p-4 text-right">
+                                            <button onClick={() => dbActions.deletePost(post.id)} className="p-2 text-slate-500 hover:text-red-400"><Trash2 size={18} /></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                     </div>
+                </div>
+            )}
+
+            {activeTab === 'chatbot' && (
+                <div className="max-w-3xl mx-auto space-y-8">
+                     <h1 className="text-3xl font-bold">Chatbot IA</h1>
+                     <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                         <div className="space-y-4">
+                            <div>
+                                <label className="text-sm text-slate-400">Base de Conhecimento</label>
+                                <textarea 
+                                    value={landingContent.chatbotConfig?.knowledgeBase || ''} 
+                                    onChange={(e) => {
+                                        const cfg = landingContent.chatbotConfig || { enabled: true, welcomeMessage: '', knowledgeBase: '' };
+                                        setLandingContent({ ...landingContent, chatbotConfig: { ...cfg, knowledgeBase: e.target.value } });
+                                    }} 
+                                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1 h-64 font-mono text-sm" 
+                                />
+                            </div>
+                            <div className="flex justify-end pt-4">
+                                <button onClick={() => setLandingContent(landingContent)} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2"><Save size={18} /> <span>Salvar IA</span></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'files' && (
+                <div className="space-y-6">
+                    <h1 className="text-3xl font-bold">Arquivos Virtuais</h1>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-6 h-fit">
+                            <form onSubmit={handleSaveFile} className="space-y-4">
+                                <div>
+                                    <label className="text-xs text-slate-400">Path</label>
+                                    <input type="text" value={newFile.path} onChange={(e) => setNewFile({...newFile, path: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white" placeholder="ex: tiktok_verify.txt" required />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-slate-400">Conteúdo</label>
+                                    <textarea rows={8} value={newFile.content} onChange={(e) => setNewFile({...newFile, content: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white font-mono text-xs" required />
+                                </div>
+                                <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg flex items-center justify-center space-x-2"><Plus size={18} /> <span>Salvar</span></button>
+                            </form>
+                        </div>
+                        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden h-fit">
+                            <div className="divide-y divide-slate-800">
+                                {virtualFiles.map((file, idx) => (
+                                <div key={idx} className="p-4 flex items-start justify-between">
+                                    <div><span className="font-mono text-white">/{file.path}</span></div>
+                                    <button onClick={() => handleDeleteFile(file.path)} className="text-slate-500 hover:text-red-400"><Trash2 size={18} /></button>
+                                </div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
