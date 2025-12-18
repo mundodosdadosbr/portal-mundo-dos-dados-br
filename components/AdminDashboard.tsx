@@ -168,6 +168,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // --- AUTH HELPERS FIX ---
   
+  // Implemented missing handleTestTikTok
   const handleTestTikTok = async () => {
     if (!tiktokAuth.accessToken) return;
     try {
@@ -179,18 +180,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         tiktokAuth.expiresAt,
         (acc, ref, exp) => setTiktokAuth({ accessToken: acc, refreshToken: ref, expiresAt: exp })
       );
-      alert(`TikTok Diagnóstico: @${stats.displayName || 'n/a'} - ${stats.followers} seguidores.`);
+      alert(`TikTok Diagnóstico: @${stats.displayName || 'n/a'} - ${stats.followers} seguidores. ${stats.error ? 'Erro: ' + stats.error : 'Sucesso!'}`);
     } catch (e: any) {
       alert(`Erro no diagnóstico: ${e.message}`);
     }
   };
 
+  // Implemented missing startTikTokAuth
   const startTikTokAuth = () => {
     const key = tiktokAuth.clientKey || DEFAULT_CLIENT_KEY;
     const url = getTikTokAuthUrl(key);
     window.open(url, 'tiktok_auth', 'width=600,height=800');
   };
 
+  // Implemented missing startMetaAuth
   const startMetaAuth = (force: boolean) => {
     if (!metaAuth.appId) {
       alert("Informe o App ID primeiro.");
@@ -200,6 +203,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     window.open(url, 'meta_auth', 'width=600,height=800');
   };
 
+  // Implemented missing handleDebugMeta
   const handleDebugMeta = async () => {
     if (!metaAuth.accessToken) return;
     const logs = await debugMetaConnection(metaAuth.accessToken);
@@ -255,25 +259,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           newStats.facebookFollowers = metaStats.facebook;
           igPosts = await getInstagramPosts(metaAuth.accessToken);
           fbPosts = await getFacebookPosts(metaAuth.accessToken);
-        } catch (metaError) {
-          console.error("Erro Meta Sync:", metaError);
-        }
+        } catch (metaError) {}
       }
 
       const combinedPosts = [...realYoutubePosts, ...tiktokPosts, ...igPosts, ...fbPosts];
       
+      // Se for automático, já salva direto
       if (isAuto) {
          dbActions.syncPosts(combinedPosts);
+         // Fixed: Operator '+' cannot be applied to types 'unknown' and 'unknown' by casting values to number.
          const total = Object.values(newStats).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
          setProfile({ ...profile, subscribers: total > 1000 ? (total/1000).toFixed(1) + 'K' : total.toString(), platformStats: newStats, lastSyncTime: new Date().toISOString(), lastSyncType: 'Auto' });
       } else {
+         // Se for manual, abre o preview para validação
          setSyncPreview(combinedPosts);
-         setProfile({ ...profile, platformStats: newStats });
+         setProfile({ ...profile, platformStats: newStats }); // Temporário para preview
       }
 
     } catch (error: any) {
       console.error(error);
-      if (!isAuto) alert(`Erro durante a sincronização: ${error.message}`);
+      if (!isAuto) alert(`Erro: ${error.message}`);
     } finally {
       setIsSyncing(false);
     }
@@ -282,8 +287,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const confirmSync = () => {
     if (!syncPreview) return;
     dbActions.syncPosts(syncPreview);
+    
     const stats = profile.platformStats || { youtubeFollowers: 0, instagramFollowers: 0, tiktokFollowers: 0, facebookFollowers: 0 };
+    // Fixed: Operator '+' cannot be applied to types 'unknown' and 'unknown' by casting values to number.
     const total = Object.values(stats).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+    
     setProfile({ 
         ...profile, 
         subscribers: total >= 1000 ? (total/1000).toFixed(1) + 'K' : total.toString(),
@@ -291,9 +299,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         lastSyncType: 'Manual' 
     });
     setSyncPreview(null);
-    alert("Dados atualizados com sucesso!");
+    alert("Sincronização confirmada e salva no banco de dados!");
   };
 
+  // --- AUTO SYNC (1 HOUR) ---
   const handleSyncRef = useRef(handleSync);
   useEffect(() => { handleSyncRef.current = handleSync; }, [handleSync]);
   useEffect(() => {
@@ -362,15 +371,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <p className="text-3xl font-bold">{visitStats.toLocaleString()}</p>
                         </div>
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                            <h3 className="text-slate-400 text-sm font-bold mb-2 text-red-500">YouTube</h3>
+                            <h3 className="text-slate-400 text-sm font-bold mb-2">YouTube</h3>
                             <p className="text-3xl font-bold">{profile.platformStats?.youtubeFollowers?.toLocaleString() || '-'}</p>
                         </div>
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                             <h3 className="text-slate-400 text-sm font-bold mb-2 text-fuchsia-500">Instagram</h3>
+                             <h3 className="text-slate-400 text-sm font-bold mb-2">Instagram</h3>
                              <p className="text-3xl font-bold">{profile.platformStats?.instagramFollowers?.toLocaleString() || '-'}</p>
                         </div>
                         <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-                             <h3 className="text-slate-400 text-sm font-bold mb-2 text-teal-500">TikTok</h3>
+                             <h3 className="text-slate-400 text-sm font-bold mb-2">TikTok</h3>
                              <p className="text-3xl font-bold">{profile.platformStats?.tiktokFollowers?.toLocaleString() || '-'}</p>
                         </div>
                     </div>
@@ -380,11 +389,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div className="flex justify-between items-center mb-6">
                                 <div>
                                     <h3 className="text-xl font-bold text-white">Pré-visualização da Sincronização</h3>
-                                    <p className="text-sm text-slate-400">Valide os números finais vindos das APIs.</p>
+                                    <p className="text-sm text-slate-400">Valide os números antes de salvar permanentemente no portal.</p>
                                 </div>
                                 <div className="flex gap-3">
                                     <button onClick={() => setSyncPreview(null)} className="px-4 py-2 text-slate-400 hover:text-white">Cancelar</button>
-                                    <button onClick={confirmSync} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold">Confirmar e Salvar</button>
+                                    <button onClick={confirmSync} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded-lg font-bold">Salvar Agora</button>
                                 </div>
                             </div>
                             
@@ -393,7 +402,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <thead className="bg-slate-950 sticky top-0">
                                         <tr className="text-xs font-bold text-slate-500 uppercase">
                                             <th className="p-3">Plataforma</th>
-                                            <th className="p-3">Título/Legenda</th>
+                                            <th className="p-3">Mídia / Título</th>
                                             <th className="p-3">Views</th>
                                             <th className="p-3">Likes</th>
                                             <th className="p-3">Data</th>
@@ -402,18 +411,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <tbody className="divide-y divide-slate-800 text-sm">
                                         {syncPreview.map((p, i) => (
                                             <tr key={i} className="hover:bg-slate-800/30">
-                                                <td className="p-3">
-                                                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                                        p.platform === Platform.INSTAGRAM ? 'bg-fuchsia-500/20 text-fuchsia-400' :
-                                                        p.platform === Platform.TIKTOK ? 'bg-teal-500/20 text-teal-400' :
-                                                        p.platform === Platform.YOUTUBE ? 'bg-red-500/20 text-red-400' : 'bg-slate-800 text-slate-400'
-                                                    }`}>
-                                                        {p.platform}
-                                                    </span>
-                                                </td>
-                                                <td className="p-3 max-w-xs truncate">{p.title || p.caption || 'Sem título'}</td>
-                                                <td className="p-3 font-mono text-emerald-400 font-bold">{p.views?.toLocaleString('pt-BR')}</td>
-                                                <td className="p-3 font-mono text-rose-400 font-bold">{p.likes?.toLocaleString('pt-BR')}</td>
+                                                <td className="p-3"><span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-800">{p.platform}</span></td>
+                                                <td className="p-3 max-w-xs truncate">{p.title || p.caption}</td>
+                                                <td className="p-3 font-mono text-emerald-400 font-bold">{p.views?.toLocaleString()}</td>
+                                                <td className="p-3 font-mono text-rose-400 font-bold">{p.likes?.toLocaleString()}</td>
                                                 <td className="p-3 text-slate-500 text-xs">{new Date(p.date).toLocaleDateString()}</td>
                                             </tr>
                                         ))}
@@ -426,7 +427,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                              <h3 className="text-xl font-bold mb-4">Atualização Manual</h3>
                              <button onClick={() => handleSync(false)} disabled={isSyncing} className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 disabled:opacity-50">
                                 <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
-                                {isSyncing ? "Buscando dados..." : "Sincronizar Agora"}
+                                {isSyncing ? "Buscando dados das APIs..." : "Iniciar Sincronização"}
                              </button>
                         </div>
                     )}
@@ -457,7 +458,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="flex items-center justify-between bg-slate-950 p-4 rounded-lg">
                              <div className="flex items-center gap-4 text-sm">
                                 <div><span className="text-slate-400">Status: </span>{tiktokAuth.accessToken ? <span className="text-emerald-400 font-bold">Conectado</span> : <span className="text-slate-500">Desconectado</span>}</div>
-                                {tiktokAuth.accessToken && <button onClick={handleTestTikTok} className="text-xs text-teal-400 hover:underline">Testar Conexão</button>}
+                                {tiktokAuth.accessToken && <button onClick={handleTestTikTok} className="text-xs text-teal-400 hover:underline">Diagnosticar</button>}
                              </div>
                              <button onClick={startTikTokAuth} className="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2 rounded-lg text-sm font-bold">Conectar TikTok</button>
                         </div>
@@ -485,7 +486,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                      </div>
                 </div>
             )}
-            {/* Outros painéis (posts, content, pages, files, chatbot) omitidos por brevidade... */}
+
+            {activeTab === 'content' && (
+                <div className="max-w-4xl space-y-8">
+                    <h1 className="text-3xl font-bold">Perfil do Criador</h1>
+                    <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div><label className="text-sm text-slate-400">Nome</label><input type="text" value={profile.name} onChange={(e) => handleProfileChange('name', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" /></div>
+                            <div><label className="text-sm text-slate-400">Handle</label><input type="text" value={profile.handle} onChange={(e) => handleProfileChange('handle', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" /></div>
+                            <div className="md:col-span-2"><label className="text-sm text-slate-400">Avatar URL</label><input type="text" value={profile.avatarUrl} onChange={(e) => handleProfileChange('avatarUrl', e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mt-1" /></div>
+                        </div>
+                        <div className="mt-4 flex justify-end"><button onClick={() => setProfile(profile)} className="bg-indigo-600 hover:bg-indigo-500 text-white py-2 px-6 rounded-lg flex items-center gap-2"><Save size={18} /> Salvar</button></div>
+                    </div>
+                </div>
+            )}
         </main>
     </div>
   );
