@@ -270,18 +270,16 @@ export const clearAllPosts = async () => {
 
 export const bulkSavePosts = async (newPosts: SocialPost[]) => {
   if (isMockMode()) {
-    const currentShadow = JSON.parse(localStorage.getItem(SHADOW_POSTS_KEY) || '[]');
-    const ids = new Set(newPosts.map(p => p.id));
-    const merged = [...newPosts, ...currentShadow.filter((p: any) => !ids.has(p.id))];
-    localStorage.setItem(SHADOW_POSTS_KEY, JSON.stringify(merged));
+    localStorage.setItem(SHADOW_POSTS_KEY, JSON.stringify(newPosts));
     return;
   }
 
   try {
     const batch = db.batch();
+    // Para garantir que os dados atualizados sobrescrevam os antigos perfeitamente
     newPosts.forEach(post => {
       const ref = db.collection('posts').doc(post.id);
-      batch.set(ref, post);
+      batch.set(ref, post, { merge: false }); // merge false garante sobrescrita completa
     });
     await batch.commit();
   } catch (e: any) {
@@ -301,7 +299,7 @@ export const subscribeToPosts = (
 
   return db.collection('posts').onSnapshot((snapshot) => {
     const firestorePosts = snapshot.docs.map(d => d.data() as SocialPost);
-    if (!isMockMode() || shadowPosts.length === 0) {
+    if (!isMockMode() || firestorePosts.length > 0) {
       const sorted = firestorePosts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       onUpdate(sorted);
     }

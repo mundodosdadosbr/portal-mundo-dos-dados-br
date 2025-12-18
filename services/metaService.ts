@@ -140,6 +140,7 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
 
     const igUserId = igPage.instagram_business_account.id;
 
+    // Campos essenciais para Reels e Posts de Imagem
     const fields = [
         'id',
         'caption',
@@ -171,25 +172,28 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
           thumbnailUrl = item.media_url || item.thumbnail_url;
       }
 
-      // Lógica robusta de visualização (views)
-      // 1. play_count ou video_views para vídeos/reels
+      // 1. EXTRAÇÃO DE VIEWS (ORDEM DE PREFERÊNCIA PARA REELS)
+      // O campo play_count é o valor público do Reels.
       let views = Number(item.play_count) || Number(item.video_views) || 0;
       
-      // 2. Fallback para Insights (Reach ou Impressions para imagens)
+      // Se play_count for 0 ou nulo, tentamos o insight de 'plays' (lifetime)
       if (item.insights && item.insights.data) {
           const playsMetric = item.insights.data.find((m: any) => m.name === 'plays');
           const reachMetric = item.insights.data.find((m: any) => m.name === 'reach');
-          const impressionsMetric = item.insights.data.find((m: any) => m.name === 'impressions');
 
           if (playsMetric?.values?.[0]) {
+              // Plays do insight costuma ser o mais preciso para Reels
               views = Math.max(views, Number(playsMetric.values[0].value));
-          } else if (reachMetric?.values?.[0]) {
-              // Para imagens, usamos o Alcance (Reach) como métrica de visualização
-              views = Math.max(views, Number(reachMetric.values[0].value));
-          } else if (impressionsMetric?.values?.[0]) {
-              views = Math.max(views, Number(impressionsMetric.values[0].value));
+          } else if (views === 0 && reachMetric?.values?.[0]) {
+              // Para imagens, o Reach é o nosso substituto de visualizações
+              views = Number(reachMetric.values[0].value);
           }
       }
+
+      // 2. EXTRAÇÃO DE LIKES
+      // like_count é o campo padrão. Em contas business, ele retorna o total.
+      const likes = Number(item.like_count) || 0;
+      const comments = Number(item.comments_count) || 0;
 
       return {
         id: item.id,
@@ -197,8 +201,8 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
         title: '', 
         caption: item.caption || '',
         thumbnailUrl: thumbnailUrl,
-        likes: Number(item.like_count) || 0,
-        comments: Number(item.comments_count) || 0,
+        likes: likes,
+        comments: comments,
         views: views,
         date: item.timestamp,
         url: item.permalink
