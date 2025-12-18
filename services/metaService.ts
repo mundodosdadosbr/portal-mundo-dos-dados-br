@@ -72,8 +72,6 @@ export const exchangeForLongLivedToken = async (
  */
 const getConnectedAccounts = async (accessToken: string) => {
   try {
-    // Request nested fields: instagram_business_account{id,username,followers_count}
-    // Added followers_count to the fields
     const fields = 'id,name,followers_count,access_token,instagram_business_account{id,username,profile_picture_url,followers_count}';
     const response = await fetch(`${GRAPH_API_URL}/me/accounts?fields=${fields}&access_token=${accessToken}`);
     const data = await response.json();
@@ -112,7 +110,6 @@ export const getMetaPlatformStats = async (accessToken: string) => {
     let igFollowers = 0;
     let fbFollowers = 0;
 
-    // Sum up followers from all connected pages/accounts found
     pages.forEach((p: any) => {
        if (p.instagram_business_account && p.instagram_business_account.followers_count) {
          igFollowers += p.instagram_business_account.followers_count;
@@ -151,8 +148,8 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
 
     const igUserId = igPage.instagram_business_account.id;
 
-    // Fetch Media
-    const mediaUrl = `${GRAPH_API_URL}/${igUserId}/media?fields=id,caption,media_type,media_url,permalink,thumbnail_url,like_count,comments_count,timestamp&limit=20&access_token=${accessToken}`;
+    // Fetch Media - Added 'play_count' which is essential for Reels views
+    const mediaUrl = `${GRAPH_API_URL}/${igUserId}/media?fields=id,caption,media_type,media_url,permalink,thumbnail_url,like_count,comments_count,timestamp,video_views,play_count&limit=20&access_token=${accessToken}`;
     
     const response = await fetch(mediaUrl);
     const data = await response.json();
@@ -164,6 +161,10 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
       if (item.media_type === 'VIDEO') imageUrl = item.thumbnail_url || item.media_url;
       else if (item.media_type === 'CAROUSEL_ALBUM') imageUrl = item.media_url || item.thumbnail_url;
 
+      // Logic for views: play_count is usually for Reels, video_views for legacy videos.
+      // We prioritize play_count for modern content.
+      const viewCount = item.play_count || item.video_views || 0;
+
       return {
         id: item.id,
         platform: Platform.INSTAGRAM,
@@ -172,7 +173,7 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
         thumbnailUrl: imageUrl,
         likes: item.like_count || 0,
         comments: item.comments_count || 0,
-        views: 0, 
+        views: viewCount,
         date: item.timestamp,
         url: item.permalink
       };
