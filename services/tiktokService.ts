@@ -57,8 +57,9 @@ export const exchangeTikTokCode = async (code: string, clientKey: string, client
 
     const data = await response.json();
     
-    if (data.error) {
-      throw new Error(`TikTok Auth Error: ${data.error_description || JSON.stringify(data.error)}`);
+    // Na v2, o erro pode vir no objeto 'error' com código diferente de 'ok'
+    if (data.error && data.error !== 'ok' && data.error.code !== 'ok') {
+      throw new Error(`TikTok Auth Error: ${data.error_description || data.error.message || JSON.stringify(data.error)}`);
     }
 
     return {
@@ -78,7 +79,7 @@ export const exchangeTikTokCode = async (code: string, clientKey: string, client
  * 3. Refresh Access Token
  */
 export const refreshTikTokToken = async (refreshToken: string, clientKey: string, clientSecret: string) => {
-  if (!refreshToken || refreshToken === 'undefined') {
+  if (!refreshToken || refreshToken === 'undefined' || refreshToken === 'null') {
     throw new Error("Refresh token inválido ou ausente.");
   }
 
@@ -101,8 +102,8 @@ export const refreshTikTokToken = async (refreshToken: string, clientKey: string
 
     const data = await response.json();
 
-    if (data.error) {
-      throw new Error(`TikTok Refresh Error: ${data.error_description || JSON.stringify(data.error)}`);
+    if (data.error && data.error !== 'ok' && data.error.code !== 'ok') {
+      throw new Error(`TikTok Refresh Error: ${data.error_description || data.error.message || JSON.stringify(data.error)}`);
     }
 
     return {
@@ -117,14 +118,52 @@ export const refreshTikTokToken = async (refreshToken: string, clientKey: string
 };
 
 /**
+ * Shared Helper: Ensure Token is Valid
+ */
+const getOrRefreshAccessToken = async (
+    accessToken: string,
+    refreshToken?: string,
+    clientKey?: string,
+    clientSecret?: string,
+    expiresAt?: number,
+    onTokenRefresh?: (newToken: string, newRefresh: string, newExpiry: number) => void
+): Promise<string | null> => {
+    if (!accessToken || accessToken === 'undefined' || accessToken === 'null') return null;
+
+    if (refreshToken && clientKey && clientSecret && expiresAt) {
+        const now = Date.now();
+        const buffer = 5 * 60 * 1000; 
+        if (now >= (expiresAt - buffer)) {
+            console.log("🔄 TikTok: Token expirando. Renovando...");
+            try {
+                const refreshed = await refreshTikTokToken(refreshToken, clientKey, clientSecret);
+                const newExpiry = Date.now() + (refreshed.expiresIn * 1000);
+                if (onTokenRefresh) {
+                    onTokenRefresh(refreshed.accessToken, refreshed.refreshToken, newExpiry);
+                }
+                return refreshed.accessToken;
+            } catch (err) {
+                console.error("TikTok: Erro ao renovar token automaticamente.", err);
+                return accessToken; 
+            }
+        }
+    }
+    return accessToken;
+};
+
+/**
  * Helper: Get User Info (Follower Count)
  */
-export const getTikTokUserStats = async (accessToken: string) => {
-  // Verificação rigorosa para evitar 'access_token_invalid' devido a valores nulos
-  if (!accessToken || accessToken === 'undefined' || accessToken === 'null') {
-    console.warn("TikTok: Tentativa de busca de stats ignorada por falta de token válido.");
-    return { followers: 0 };
-  }
+export const getTikTokUserStats = async (
+    accessToken: string,
+    refreshToken?: string,
+    clientKey?: string,
+    clientSecret?: string,
+    expiresAt?: number,
+    onTokenRefresh?: (newToken: string, newRefresh: string, newExpiry: number) => void
+) => {
+  const validToken = await getOrRefreshAccessToken(accessToken, refreshToken, clientKey, clientSecret, expiresAt, onTokenRefresh);
+  if (!validToken) return { followers: 0, error: "Token ausente ou inválido" };
 
   try {
     const fields = "follower_count,display_name,avatar_url,video_count";
@@ -133,26 +172,37 @@ export const getTikTokUserStats = async (accessToken: string) => {
     const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${accessToken}`
+        'Authorization': `Bearer ${validToken}`,
+        'Cache-Control': 'no-cache'
       }
     });
 
     const data = await response.json();
 
-    if (data.error) {
-       console.error("TikTok Stats API Error Detail:", typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
-       return { followers: 0 };
+    // CRÍTICO: TikTok retorna o objeto de erro mesmo quando o sucesso é 'ok'
+    if (data.error && data.error.code !== 'ok') {
+       const errStr = typeof data.error === 'object' ? JSON.stringify(data.error) : data.error;
+       console.error("TikTok API Error:", errStr);
+       return { followers: 0, error: errStr };
     }
 
-    if (data.data && data.data.user) {
+    // Tentar extrair de data.data.user ou data.user
+    const user = data.data?.user || data.user;
+    if (user) {
+        const followerCount = user.follower_count !== undefined 
+            ? user.follower_count 
+            : (user.stats?.follower_count || 0);
+            
         return { 
-            followers: data.data.user.follower_count || 0 
+            followers: Number(followerCount) || 0,
+            displayName: user.display_name || ''
         };
     }
-    return { followers: 0 };
-  } catch (e) {
-    console.error("TikTok User Info Error:", e);
-    return { followers: 0 };
+    
+    console.warn("TikTok: Resposta sem dados de usuário", JSON.stringify(data));
+    return { followers: 0, error: "Usuário não retornado pela API" };
+  } catch (e: any) {
+    return { followers: 0, error: e.message };
   }
 };
 
@@ -169,72 +219,45 @@ export const getTikTokPosts = async (
   onTokenRefresh?: (newToken: string, newRefresh: string, newExpiry: number) => void
 ): Promise<SocialPost[]> => {
   
-  let validAccessToken = accessToken;
+  if (!accessToken) return [];
+  const validToken = await getOrRefreshAccessToken(accessToken, refreshToken, clientKey, clientSecret, tokenExpiresAt, onTokenRefresh);
+  if (!validToken) return [];
 
-  // Verificação de nulidade antes de processar
-  if (!validAccessToken || validAccessToken === 'undefined' || validAccessToken === 'null') {
-    return [];
-  }
+  try {
+    const fields = "id,title,cover_image_url,like_count,comment_count,view_count,create_time,share_url";
+    const targetUrl = `https://open.tiktokapis.com/v2/video/list/?fields=${fields}`;
 
-  // AUTO-RENEWAL CHECK
-  if (validAccessToken && refreshToken && clientKey && clientSecret && tokenExpiresAt) {
-    const now = Date.now();
-    // Refresh if expiring in less than 5 minutes
-    if (now >= (tokenExpiresAt - 5 * 60 * 1000)) {
-       try {
-         const refreshed = await refreshTikTokToken(refreshToken, clientKey, clientSecret);
-         validAccessToken = refreshed.accessToken;
-         const newExpiry = Date.now() + (refreshed.expiresIn * 1000);
-         
-         if (onTokenRefresh) {
-           onTokenRefresh(refreshed.accessToken, refreshed.refreshToken, newExpiry);
-         }
-       } catch (err) {
-         console.error("Failed to auto-renew TikTok token:", err);
-       }
+    const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${validToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ max_count: 20 })
+    });
+
+    const data = await response.json();
+    
+    if (data.error && data.error.code !== 'ok') {
+        console.error("TikTok Posts Error:", JSON.stringify(data.error));
+        return [];
     }
-  }
 
-  if (validAccessToken) {
-    try {
-      const fields = "id,title,cover_image_url,like_count,comment_count,view_count,create_time,share_url";
-      const targetUrl = `https://open.tiktokapis.com/v2/video/list/?fields=${fields}`;
-
-      const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${validAccessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 
-          max_count: 20
-        })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(`TikTok API status: ${response.status} - ${JSON.stringify(errData)}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.data && data.data.videos) {
-        return data.data.videos.map((video: any) => ({
-          id: video.id,
-          platform: Platform.TIKTOK,
-          thumbnailUrl: video.cover_image_url,
-          caption: video.title || 'Sem legenda', 
-          likes: video.like_count || 0,
-          comments: video.comment_count || 0,
-          views: video.view_count || 0,
-          date: new Date(video.create_time * 1000).toISOString(),
-          url: video.share_url || '#'
-        }));
-      }
-
-    } catch (error) {
-      console.warn("TikTok API call failed:", error);
+    if (data.data && data.data.videos) {
+      return data.data.videos.map((video: any) => ({
+        id: video.id,
+        platform: Platform.TIKTOK,
+        thumbnailUrl: video.cover_image_url,
+        caption: video.title || 'Sem legenda', 
+        likes: video.like_count || 0,
+        comments: video.comment_count || 0,
+        views: video.view_count || 0,
+        date: new Date(video.create_time * 1000).toISOString(),
+        url: video.share_url || '#'
+      }));
     }
+  } catch (error) {
+    console.warn("TikTok API call failed:", error);
   }
 
   return [];
