@@ -140,9 +140,23 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
 
     const igUserId = igPage.instagram_business_account.id;
 
-    // A consulta agora inclui play_count e video_views no objeto principal
-    // e tenta buscar insights (plays) para Reels, que é onde a maioria das views mora hoje.
-    const mediaUrl = `${GRAPH_API_URL}/${igUserId}/media?fields=id,caption,media_type,media_url,permalink,thumbnail_url,like_count,comments_count,timestamp,video_views,play_count,insights.metric(plays)&limit=30&access_token=${accessToken}`;
+    const fields = [
+        'id',
+        'caption',
+        'media_type',
+        'media_product_type',
+        'media_url',
+        'permalink',
+        'thumbnail_url',
+        'timestamp',
+        'like_count',
+        'comments_count',
+        'video_views',
+        'play_count',
+        'insights.metric(plays,reach,impressions)'
+    ].join(',');
+
+    const mediaUrl = `${GRAPH_API_URL}/${igUserId}/media?fields=${fields}&limit=30&access_token=${accessToken}`;
     
     const response = await fetch(mediaUrl);
     const data = await response.json();
@@ -150,20 +164,30 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
     if (data.error) throw new Error(data.error.message);
 
     return (data.data || []).map((item: any) => {
-      let imageUrl = item.media_url;
-      if (item.media_type === 'VIDEO') imageUrl = item.thumbnail_url || item.media_url;
-      else if (item.media_type === 'CAROUSEL_ALBUM') imageUrl = item.media_url || item.thumbnail_url;
+      let thumbnailUrl = item.media_url;
+      if (item.media_type === 'VIDEO') {
+          thumbnailUrl = item.thumbnail_url || item.media_url;
+      } else if (item.media_type === 'CAROUSEL_ALBUM') {
+          thumbnailUrl = item.media_url || item.thumbnail_url;
+      }
 
-      // Lógica de Views:
-      // 1. play_count (Campo nativo para Reels modernos)
-      // 2. video_views (Campo nativo para vídeos clássicos)
-      // 3. insights.data (plays) - Fallback para métrica de insights de Reels
-      let viewCount = item.play_count || item.video_views || 0;
+      // Lógica robusta de visualização (views)
+      // 1. play_count ou video_views para vídeos/reels
+      let views = Number(item.play_count) || Number(item.video_views) || 0;
       
-      if (viewCount === 0 && item.insights && item.insights.data) {
+      // 2. Fallback para Insights (Reach ou Impressions para imagens)
+      if (item.insights && item.insights.data) {
           const playsMetric = item.insights.data.find((m: any) => m.name === 'plays');
-          if (playsMetric && playsMetric.values && playsMetric.values[0]) {
-              viewCount = playsMetric.values[0].value;
+          const reachMetric = item.insights.data.find((m: any) => m.name === 'reach');
+          const impressionsMetric = item.insights.data.find((m: any) => m.name === 'impressions');
+
+          if (playsMetric?.values?.[0]) {
+              views = Math.max(views, Number(playsMetric.values[0].value));
+          } else if (reachMetric?.values?.[0]) {
+              // Para imagens, usamos o Alcance (Reach) como métrica de visualização
+              views = Math.max(views, Number(reachMetric.values[0].value));
+          } else if (impressionsMetric?.values?.[0]) {
+              views = Math.max(views, Number(impressionsMetric.values[0].value));
           }
       }
 
@@ -172,10 +196,10 @@ export const getInstagramPosts = async (accessToken: string): Promise<SocialPost
         platform: Platform.INSTAGRAM,
         title: '', 
         caption: item.caption || '',
-        thumbnailUrl: imageUrl,
-        likes: item.like_count || 0,
-        comments: item.comments_count || 0,
-        views: viewCount,
+        thumbnailUrl: thumbnailUrl,
+        likes: Number(item.like_count) || 0,
+        comments: Number(item.comments_count) || 0,
+        views: views,
         date: item.timestamp,
         url: item.permalink
       };
@@ -251,12 +275,15 @@ export const debugMetaConnection = async (accessToken: string) => {
     }
 
     const pages = await getConnectedAccounts(accessToken);
-    logs.push(`Páginas: ${pages.length}`);
+    logs.push(`Páginas vinculadas: ${pages.length}`);
 
     pages.forEach((page: any) => {
       logs.push(`- ${page.name} (ID: ${page.id})`);
       if (page.instagram_business_account) {
         logs.push(`  ✅ Instagram associado: @${page.instagram_business_account.username}`);
+        logs.push(`  📊 Seguidores IG: ${page.instagram_business_account.followers_count || 0}`);
+      } else {
+        logs.push(`  ❌ Sem conta Instagram Business vinculada.`);
       }
     });
 
