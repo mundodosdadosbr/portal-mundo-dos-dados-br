@@ -27,13 +27,18 @@ const db = firebase.firestore();
 console.log("🚀 [CreatorNexus] Conectado ao Firebase (Compat SDK)");
 
 // Tentar definir persistência
-auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.warn("Aviso de persistência:", e));
+try {
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(e => console.warn("Aviso de persistência:", e));
+} catch (e) {
+  console.warn("Falha ao configurar persistência:", e);
+}
 
 const KEY_UI_SESSION = 'nexus_ui_session_indicator';
 const ALLOWED_EMAIL = 'diego.morais@mundodosdadosbr.com';
 
-// --- TYPES ---
-// Removed locally defined interfaces in favor of shared types in types.ts
+// LocalStorage Keys for Shadow Storage (Demo Mode)
+const SHADOW_SETTINGS_KEY = 'nexus_shadow_settings';
+const SHADOW_POSTS_KEY = 'nexus_shadow_posts';
 
 export interface VirtualFile {
   path: string;
@@ -44,11 +49,15 @@ export interface VirtualFile {
 // --- AUTHENTICATION ---
 
 export const initFirebase = () => {
-  // Apenas monitora, mas a decisão de "estar logado na UI" depende do MFA no App.tsx
+  // Apenas monitora
 };
 
 export const isAuthenticated = () => {
   return !!localStorage.getItem(KEY_UI_SESSION);
+};
+
+export const isMockMode = () => {
+  return localStorage.getItem('nexus_mock_mode') === 'true';
 };
 
 // Mock User for Fallback
@@ -56,10 +65,19 @@ const MOCK_ADMIN_USER: any = {
   uid: 'mock-admin-uid',
   displayName: 'Admin (Modo Demo)',
   email: ALLOWED_EMAIL,
-  photoURL: 'images/logo.png'
+  photoURL: 'https://storage.googleapis.com/mdados-images-publics/images-portais-link/logo-social-preview.png'
 };
 
 export const loginWithGoogle = async () => {
+  const isLocalFile = window.location.protocol === 'file:' || window.location.protocol === 'about:';
+  const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+  if (isLocalFile || !isSecure) {
+    console.warn("⚠️ Ambiente restrito detectado. Ativando Modo Demo.");
+    localStorage.setItem('nexus_mock_mode', 'true');
+    return MOCK_ADMIN_USER;
+  }
+
   const provider = new firebase.auth.GoogleAuthProvider();
   try {
     const result = await auth.signInWithPopup(provider);
@@ -67,45 +85,26 @@ export const loginWithGoogle = async () => {
 
     if (!user) throw new Error("Nenhum usuário retornado.");
 
-    // 1. EMAIL RESTRICTION CHECK
     if (user.email !== ALLOWED_EMAIL) {
       await auth.signOut();
       throw new Error(`Acesso negado. O e-mail ${user.email} não tem permissão de administrador.`);
     }
     
-    // Check/Create initial config for new user
-    const userRef = db.collection('settings').doc('global_config');
-    const userDoc = await userRef.get();
-    
-    if (!userDoc.exists) {
-      await userRef.set({
-        profile: {
-            name: user.displayName || "Mundo dos Dados",
-            handle: "@mundodosdadosbr",
-            avatarUrl: user.photoURL || "images/logo.png",
-            subscribers: "0",
-            bio: "Admin do Sistema"
-        }
-      }, { merge: true });
-    }
-
     localStorage.removeItem('nexus_mock_mode');
     return user;
 
   } catch (error: any) {
     console.error("Erro no Google Auth:", error);
-    
-    if (error.code === 'auth/operation-not-supported-in-this-environment' || 
-        error.message?.includes('protocol') ||
-        error.code === 'auth/popup-closed-by-user') {
-          
-      console.warn("⚠️ Ambiente restrito. Ativando Modo Demo.");
+    const isEnvError = 
+      error.code === 'auth/operation-not-supported-in-this-environment' || 
+      error.code === 'auth/unauthorized-domain' ||
+      error.message?.toLowerCase().includes('protocol') ||
+      error.message?.toLowerCase().includes('location.protocol') ||
+      error.message?.toLowerCase().includes('web storage');
+
+    if (isEnvError || error.code === 'auth/popup-closed-by-user') {
       localStorage.setItem('nexus_mock_mode', 'true');
       return MOCK_ADMIN_USER;
-    }
-
-    if (error.code === 'auth/operation-not-allowed') {
-       throw new Error("Login com Google não habilitado no console do Firebase.");
     }
     throw error;
   }
@@ -114,20 +113,20 @@ export const loginWithGoogle = async () => {
 export const logout = async () => {
   localStorage.removeItem(KEY_UI_SESSION);
   localStorage.removeItem('nexus_mock_mode');
-  await auth.signOut();
+  try {
+    await auth.signOut();
+  } catch (e) {}
 };
 
-// --- MFA LOGIC (TOTP) ---
+// --- MFA LOGIC ---
 
 export const checkMfaStatus = async (uid: string): Promise<boolean> => {
-  if (localStorage.getItem('nexus_mock_mode')) return true;
-
+  if (isMockMode()) return true;
   try {
     const docRef = db.collection('users').doc(uid).collection('private').doc('mfa');
     const docSnap = await docRef.get();
     return docSnap.exists;
   } catch (e) {
-    console.error("Erro ao checar MFA:", e);
     return false;
   }
 };
@@ -146,20 +145,16 @@ export const initiateMfaSetup = () => {
 };
 
 export const verifyMfaToken = async (token: string, uid: string, pendingSecret?: string) => {
-  if (localStorage.getItem('nexus_mock_mode')) return true;
-
+  if (isMockMode()) return true;
   let secretStr = pendingSecret;
-
   if (!secretStr) {
-    const docRef = db.collection('users').doc(uid).collection('private').doc('mfa');
-    const docSnap = await docRef.get();
-    if (docSnap.exists) {
-      secretStr = docSnap.data()?.secret;
-    }
+    try {
+      const docRef = db.collection('users').doc(uid).collection('private').doc('mfa');
+      const docSnap = await docRef.get();
+      if (docSnap.exists) secretStr = docSnap.data()?.secret;
+    } catch (e) {}
   }
-
   if (!secretStr) return false;
-
   const totp = new OTPAuth.TOTP({
     issuer: 'MundoDosDadosBR',
     label: ALLOWED_EMAIL,
@@ -168,17 +163,14 @@ export const verifyMfaToken = async (token: string, uid: string, pendingSecret?:
     period: 30,
     secret: OTPAuth.Secret.fromBase32(secretStr)
   });
-
   return totp.validate({ token, window: 1 }) !== null;
 };
 
 export const saveMfaSecret = async (uid: string, secret: string) => {
-  if (localStorage.getItem('nexus_mock_mode')) return;
-
-  await db.collection('users').doc(uid).collection('private').doc('mfa').set({
-    secret,
-    createdAt: new Date().toISOString()
-  });
+  if (isMockMode()) return;
+  try {
+    await db.collection('users').doc(uid).collection('private').doc('mfa').set({ secret, createdAt: new Date().toISOString() });
+  } catch (e) {}
 };
 
 export const setUiSession = () => {
@@ -190,124 +182,153 @@ export const setUiSession = () => {
 export const saveSettings = async (
   profile: CreatorProfile, 
   landingContent: LandingPageContent, 
-  keys: { 
-    youtube?: string, 
-    tiktokAuth?: Partial<TikTokAuthData>,
-    metaAuth?: Partial<MetaAuthData> 
-  }
+  keys: { youtube?: string, tiktokAuth?: Partial<TikTokAuthData>, metaAuth?: Partial<MetaAuthData> }
 ) => {
+  const data = { profile, landingContent, keys };
+  if (isMockMode()) {
+    localStorage.setItem(SHADOW_SETTINGS_KEY, JSON.stringify(data));
+    console.log("💾 [ShadowStorage] Settings salvas localmente (Modo Demo)");
+    return;
+  }
+
   try {
-    await db.collection('settings').doc('global_config').set({
-      profile,
-      landingContent,
-      keys
-    }, { merge: true });
-  } catch (e) {
-    console.warn("Erro ao salvar settings (pode ser permissão):", e);
+    await db.collection('settings').doc('global_config').set(data, { merge: true });
+  } catch (e: any) {
+    if (e.code === 'permission-denied') {
+      console.warn("⚠️ Sem permissão para salvar no Firestore. Usando Shadow Storage.");
+      localStorage.setItem(SHADOW_SETTINGS_KEY, JSON.stringify(data));
+    }
   }
 };
 
 export const subscribeToSettings = (
-  onUpdate: (data: { 
-    profile?: CreatorProfile, 
-    landingContent?: LandingPageContent, 
-    keys: { 
-      youtube: string, 
-      tiktokAuth: TikTokAuthData,
-      metaAuth: MetaAuthData 
-    }
-  }) => void,
+  onUpdate: (data: any) => void,
   onError?: (error: any) => void
 ) => {
+  // If we have shadow data, notify immediately
+  const shadowData = localStorage.getItem(SHADOW_SETTINGS_KEY);
+  if (shadowData) {
+    try {
+      onUpdate(JSON.parse(shadowData));
+    } catch (e) {}
+  }
+
   return db.collection('settings').doc('global_config').onSnapshot((docSnap) => {
     if (docSnap.exists) {
       const data = docSnap.data();
-      onUpdate({
-        profile: data?.profile,
-        landingContent: data?.landingContent,
-        keys: {
-            youtube: data?.keys?.youtube || '',
-            tiktokAuth: data?.keys?.tiktokAuth || {},
-            metaAuth: data?.keys?.metaAuth || {}
-        }
-      });
+      // Only override if not in mock mode or if shadow data doesn't exist
+      if (!isMockMode() || !shadowData) {
+        onUpdate({
+          profile: data?.profile,
+          landingContent: data?.landingContent,
+          keys: {
+              youtube: data?.keys?.youtube || '',
+              tiktokAuth: data?.keys?.tiktokAuth || {},
+              metaAuth: data?.keys?.metaAuth || {}
+          }
+        });
+      }
     }
-  }, onError);
+  }, (err) => {
+    if (onError) onError(err);
+  });
 };
 
 // --- POSTS ---
 
 export const savePost = async (post: SocialPost) => {
-  await db.collection('posts').doc(post.id).set(post);
+  if (isMockMode()) {
+    const shadowPosts = JSON.parse(localStorage.getItem(SHADOW_POSTS_KEY) || '[]');
+    const newPosts = [post, ...shadowPosts.filter((p: any) => p.id !== post.id)];
+    localStorage.setItem(SHADOW_POSTS_KEY, JSON.stringify(newPosts));
+    return;
+  }
+  try { await db.collection('posts').doc(post.id).set(post); } catch (e) {}
 };
 
 export const deletePostById = async (postId: string) => {
-  await db.collection('posts').doc(postId).delete();
+  if (isMockMode()) {
+    const shadowPosts = JSON.parse(localStorage.getItem(SHADOW_POSTS_KEY) || '[]');
+    localStorage.setItem(SHADOW_POSTS_KEY, JSON.stringify(shadowPosts.filter((p: any) => p.id !== postId)));
+    return;
+  }
+  try { await db.collection('posts').doc(postId).delete(); } catch (e) {}
 };
 
 export const clearAllPosts = async () => {
-  const querySnapshot = await db.collection('posts').get();
-  const batch = db.batch();
-  querySnapshot.forEach((docSnap) => {
-    batch.delete(docSnap.ref);
-  });
-  await batch.commit();
+  if (isMockMode()) {
+    localStorage.removeItem(SHADOW_POSTS_KEY);
+    return;
+  }
+  try {
+    const snapshot = await db.collection('posts').get();
+    const batch = db.batch();
+    snapshot.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+  } catch (e) {}
 };
 
 export const bulkSavePosts = async (newPosts: SocialPost[]) => {
-  const batch = db.batch();
-  newPosts.forEach(post => {
-    const ref = db.collection('posts').doc(post.id);
-    batch.set(ref, post);
-  });
-  await batch.commit();
+  if (isMockMode()) {
+    const currentShadow = JSON.parse(localStorage.getItem(SHADOW_POSTS_KEY) || '[]');
+    const ids = new Set(newPosts.map(p => p.id));
+    const merged = [...newPosts, ...currentShadow.filter((p: any) => !ids.has(p.id))];
+    localStorage.setItem(SHADOW_POSTS_KEY, JSON.stringify(merged));
+    return;
+  }
+
+  try {
+    const batch = db.batch();
+    newPosts.forEach(post => {
+      const ref = db.collection('posts').doc(post.id);
+      batch.set(ref, post);
+    });
+    await batch.commit();
+  } catch (e: any) {
+    if (e.code === 'permission-denied') {
+       console.warn("⚠️ Sem permissão para Bulk Save. Usando Shadow Storage.");
+       localStorage.setItem(SHADOW_POSTS_KEY, JSON.stringify(newPosts));
+    }
+  }
 };
 
 export const subscribeToPosts = (
   onUpdate: (posts: SocialPost[]) => void,
   onError?: (error: any) => void
 ) => {
+  const shadowPosts = JSON.parse(localStorage.getItem(SHADOW_POSTS_KEY) || '[]');
+  if (shadowPosts.length > 0) onUpdate(shadowPosts);
+
   return db.collection('posts').onSnapshot((snapshot) => {
-    const posts = snapshot.docs.map(d => d.data() as SocialPost);
-    posts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    onUpdate(posts);
-  }, onError);
+    const firestorePosts = snapshot.docs.map(d => d.data() as SocialPost);
+    if (!isMockMode() || shadowPosts.length === 0) {
+      const sorted = firestorePosts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      onUpdate(sorted);
+    }
+  }, (err) => {
+    if (onError) onError(err);
+  });
 };
 
 // --- VISITS / ANALYTICS ---
 
 export const logVisit = async () => {
-  // Simple session check to avoid counting refresh as new visit
   const sessionKey = 'nexus_visit_logged';
-  if (sessionStorage.getItem(sessionKey)) {
-    return; // Already counted for this session
-  }
-
+  if (sessionStorage.getItem(sessionKey)) return;
   try {
-    const statsRef = db.collection('stats').doc('global');
-    // Using atomic increment
-    await statsRef.set({
+    await db.collection('stats').doc('global').set({
       totalVisits: firebase.firestore.FieldValue.increment(1),
       lastVisit: new Date().toISOString()
     }, { merge: true });
-    
     sessionStorage.setItem(sessionKey, 'true');
-  } catch (e) {
-    console.warn("Analytics error:", e);
-  }
+  } catch (e) {}
 };
 
 export const getSiteStats = async () => {
   try {
     const doc = await db.collection('stats').doc('global').get();
-    if (doc.exists) {
-      return {
-        totalVisits: doc.data()?.totalVisits || 0
-      };
-    }
-    return { totalVisits: 0 };
+    return { totalVisits: doc.exists ? doc.data()?.totalVisits || 0 : 0 };
   } catch (e) {
-    console.error("Error fetching stats:", e);
     return { totalVisits: 0 };
   }
 };
@@ -318,37 +339,29 @@ export const getVirtualFilesCloud = async (): Promise<VirtualFile[]> => {
   try {
     const snapshot = await db.collection('virtual_files').get();
     return snapshot.docs.map(d => d.data() as VirtualFile);
-  } catch (e) {
-    console.error("Erro ao buscar arquivos virtuais:", e);
-    return [];
-  }
+  } catch (e) { return []; }
 };
 
 export const checkVirtualFileContent = async (path: string): Promise<string | null> => {
   try {
     const safeId = path.replace(/[^a-zA-Z0-9.-]/g, '_');
     const docSnap = await db.collection('virtual_files').doc(safeId).get();
-    
-    if (docSnap.exists) {
-      return docSnap.data()?.content;
-    }
-    return null;
-  } catch (e) {
-    return null;
-  }
+    return docSnap.exists ? docSnap.data()?.content : null;
+  } catch (e) { return null; }
 };
 
 export const saveVirtualFile = async (file: VirtualFile) => {
-  const cleanPath = file.path.startsWith('/') ? file.path.substring(1) : file.path;
-  const safeId = cleanPath.replace(/[^a-zA-Z0-9.-]/g, '_');
-  
-  await db.collection('virtual_files').doc(safeId).set({
-    ...file,
-    path: cleanPath
-  });
+  if (isMockMode()) return;
+  try {
+    const safeId = file.path.replace(/[^a-zA-Z0-9.-]/g, '_');
+    await db.collection('virtual_files').doc(safeId).set(file);
+  } catch (e) {}
 };
 
 export const deleteVirtualFile = async (path: string) => {
-  const safeId = path.replace(/[^a-zA-Z0-9.-]/g, '_');
-  await db.collection('virtual_files').doc(safeId).delete();
+  if (isMockMode()) return;
+  try {
+    const safeId = path.replace(/[^a-zA-Z0-9.-]/g, '_');
+    await db.collection('virtual_files').doc(safeId).delete();
+  } catch (e) {}
 };

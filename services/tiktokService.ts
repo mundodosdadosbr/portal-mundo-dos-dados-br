@@ -20,10 +20,6 @@ const CORS_PROXY = 'https://corsproxy.io/?';
  */
 export const getTikTokAuthUrl = (clientKey: string) => {
   const csrfState = Math.random().toString(36).substring(7);
-  // Scopes: 
-  // - user.info.basic (Avatar/Name)
-  // - user.info.stats (Followers/Likes) - REQUIRED for follower count
-  // - video.list (Videos)
   const scope = 'user.info.basic,user.info.stats,video.list';
   
   const url = new URL('https://www.tiktok.com/v2/auth/authorize/');
@@ -62,7 +58,7 @@ export const exchangeTikTokCode = async (code: string, clientKey: string, client
     const data = await response.json();
     
     if (data.error) {
-      throw new Error(`TikTok Auth Error: ${data.error_description || data.error}`);
+      throw new Error(`TikTok Auth Error: ${data.error_description || JSON.stringify(data.error)}`);
     }
 
     return {
@@ -82,6 +78,10 @@ export const exchangeTikTokCode = async (code: string, clientKey: string, client
  * 3. Refresh Access Token
  */
 export const refreshTikTokToken = async (refreshToken: string, clientKey: string, clientSecret: string) => {
+  if (!refreshToken || refreshToken === 'undefined') {
+    throw new Error("Refresh token inválido ou ausente.");
+  }
+
   const params = new URLSearchParams();
   params.append('client_key', clientKey);
   params.append('client_secret', clientSecret);
@@ -102,7 +102,7 @@ export const refreshTikTokToken = async (refreshToken: string, clientKey: string
     const data = await response.json();
 
     if (data.error) {
-      throw new Error(`TikTok Refresh Error: ${data.error_description}`);
+      throw new Error(`TikTok Refresh Error: ${data.error_description || JSON.stringify(data.error)}`);
     }
 
     return {
@@ -120,10 +120,14 @@ export const refreshTikTokToken = async (refreshToken: string, clientKey: string
  * Helper: Get User Info (Follower Count)
  */
 export const getTikTokUserStats = async (accessToken: string) => {
-  if (!accessToken) return { followers: 0 };
+  // Verificação rigorosa para evitar 'access_token_invalid' devido a valores nulos
+  if (!accessToken || accessToken === 'undefined' || accessToken === 'null') {
+    console.warn("TikTok: Tentativa de busca de stats ignorada por falta de token válido.");
+    return { followers: 0 };
+  }
 
   try {
-    const fields = "follower_count,display_name,avatar_url";
+    const fields = "follower_count,display_name,avatar_url,video_count";
     const targetUrl = `https://open.tiktokapis.com/v2/user/info/?fields=${fields}`;
 
     const response = await fetch(CORS_PROXY + encodeURIComponent(targetUrl), {
@@ -136,11 +140,8 @@ export const getTikTokUserStats = async (accessToken: string) => {
     const data = await response.json();
 
     if (data.error) {
-       console.error("TikTok Stats API Error:", data.error);
-       // Log detailed error for debugging permissions
-       if (data.error.code === 'access_denied' || data.error.code === 'scope_not_authorized') {
-           console.warn("Permissão negada. Verifique se o escopo 'user.info.stats' foi autorizado.");
-       }
+       console.error("TikTok Stats API Error Detail:", typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
+       return { followers: 0 };
     }
 
     if (data.data && data.data.user) {
@@ -170,11 +171,16 @@ export const getTikTokPosts = async (
   
   let validAccessToken = accessToken;
 
+  // Verificação de nulidade antes de processar
+  if (!validAccessToken || validAccessToken === 'undefined' || validAccessToken === 'null') {
+    return [];
+  }
+
   // AUTO-RENEWAL CHECK
-  if (accessToken && refreshToken && clientKey && clientSecret && tokenExpiresAt) {
+  if (validAccessToken && refreshToken && clientKey && clientSecret && tokenExpiresAt) {
     const now = Date.now();
+    // Refresh if expiring in less than 5 minutes
     if (now >= (tokenExpiresAt - 5 * 60 * 1000)) {
-       console.log("TikTok Token expired or expiring soon. Refreshing...");
        try {
          const refreshed = await refreshTikTokToken(refreshToken, clientKey, clientSecret);
          validAccessToken = refreshed.accessToken;
@@ -205,7 +211,10 @@ export const getTikTokPosts = async (
         })
       });
 
-      if (!response.ok) throw new Error(`TikTok API status: ${response.status}`);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(`TikTok API status: ${response.status} - ${JSON.stringify(errData)}`);
+      }
 
       const data = await response.json();
       
